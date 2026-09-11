@@ -178,7 +178,10 @@ public class MainActivity extends Activity {
         boolean editing = existing != null;
         base(editing ? "Modifica allenamento" : "Nuovo allenamento", "Registra quello che avete svolto");
         Button back = link("‹  Annulla");
-        back.setOnClickListener(v -> editing ? showHistory() : showHome());
+        back.setOnClickListener(v -> {
+            if (editing) showHistory();
+            else showHome();
+        });
         content.addView(back);
 
         Calendar selected = Calendar.getInstance();
