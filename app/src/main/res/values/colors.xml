@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="navy">#102A43</color>
+    <color name="status_bar">#0B1F33</color>
+    <color name="accent">#12B886</color>
+    <color name="page">#F2F6F8</color>
+</resources>
