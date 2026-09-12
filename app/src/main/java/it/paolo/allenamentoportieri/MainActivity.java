@@ -4,10 +4,12 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -18,6 +20,8 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.GridLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -44,12 +48,17 @@ public class MainActivity extends Activity {
     private static final int PAGE = Color.rgb(242, 246, 248);
     private static final int MUTED = Color.rgb(91, 110, 127);
     private static final String[] GOALS = {"Tecnica di base", "Presa e tuffo", "Reattività", "Uscite alte", "Uno contro uno", "Gioco con i piedi", "Forza e mobilità", "Seduta completa"};
+    private static final int PICK_PHOTO = 40;
     private final SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ITALY);
     private final SimpleDateFormat pretty = new SimpleDateFormat("EEEE d MMMM yyyy", Locale.ITALY);
     private final List<Session> sessions = new ArrayList<>();
     private SharedPreferences prefs;
     private LinearLayout content;
     private boolean homeVisible;
+    private Calendar historyMonth = Calendar.getInstance();
+    private String selectedHistoryDate;
+    private String editorPhotoUri = "";
+    private ImageView editorPhotoPreview;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -123,16 +132,102 @@ public class MainActivity extends Activity {
 
     private void showHistory() {
         homeVisible = false;
-        base("Storico", sessions.size() + (sessions.size() == 1 ? " giornata registrata" : " giornate registrate"));
+        base("Calendario allenamenti", sessions.size() + (sessions.size() == 1 ? " giornata registrata" : " giornate registrate"));
         Button back = link("‹  Torna alla home");
         back.setOnClickListener(v -> showHome());
         content.addView(back);
-        if (sessions.isEmpty()) content.addView(empty("Nessun allenamento registrato."));
-        for (Session s : sorted()) content.addView(sessionCard(s));
+
+        if (selectedHistoryDate == null) {
+            selectedHistoryDate = sessions.isEmpty() ? iso.format(new Date()) : sorted().get(0).date;
+            try { historyMonth.setTime(iso.parse(selectedHistoryDate)); } catch (Exception ignored) {}
+        }
+        renderCalendar();
+    }
+
+    private void renderCalendar() {
+        content.removeViews(1, content.getChildCount() - 1);
+        LinearLayout calendarCard = card();
+        LinearLayout monthBar = row();
+        Button previous = smallButton("‹");
+        previous.setTextSize(22);
+        previous.setOnClickListener(v -> { historyMonth.add(Calendar.MONTH, -1); selectedHistoryDate = null; renderCalendar(); });
+        monthBar.addView(previous, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        SimpleDateFormat monthFormat = new SimpleDateFormat("MMMM yyyy", Locale.ITALY);
+        TextView month = text(capitalize(monthFormat.format(historyMonth.getTime())), 19, NAVY, true);
+        month.setGravity(Gravity.CENTER);
+        monthBar.addView(month, weight());
+        Button next = smallButton("›");
+        next.setTextSize(22);
+        next.setOnClickListener(v -> { historyMonth.add(Calendar.MONTH, 1); selectedHistoryDate = null; renderCalendar(); });
+        monthBar.addView(next, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        calendarCard.addView(monthBar);
+
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(7);
+        String[] weekdays = {"L", "M", "M", "G", "V", "S", "D"};
+        for (String day : weekdays) {
+            TextView h = text(day, 12, MUTED, true);
+            h.setGravity(Gravity.CENTER);
+            grid.addView(h, gridCell());
+        }
+        Calendar first = (Calendar) historyMonth.clone();
+        first.set(Calendar.DAY_OF_MONTH, 1);
+        int emptyDays = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7;
+        for (int i = 0; i < emptyDays; i++) grid.addView(new View(this), gridCell());
+        int max = first.getActualMaximum(Calendar.DAY_OF_MONTH);
+        for (int day = 1; day <= max; day++) {
+            Calendar value = (Calendar) first.clone();
+            value.set(Calendar.DAY_OF_MONTH, day);
+            String key = iso.format(value.getTime());
+            boolean trained = hasTraining(key);
+            boolean selected = key.equals(selectedHistoryDate);
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER);
+            cell.setPadding(dp(2), dp(5), dp(2), dp(4));
+            cell.setBackground(round(selected ? NAVY : Color.TRANSPARENT, 10, Color.TRANSPARENT, 0));
+            TextView number = text(String.valueOf(day), 15, selected ? Color.WHITE : NAVY, selected || trained);
+            number.setGravity(Gravity.CENTER);
+            cell.addView(number, new LinearLayout.LayoutParams(-1, dp(24)));
+            TextView dot = text(trained ? "●" : "", 11, selected ? Color.rgb(94, 234, 192) : GREEN, true);
+            dot.setGravity(Gravity.CENTER);
+            cell.addView(dot, new LinearLayout.LayoutParams(-1, dp(17)));
+            cell.setOnClickListener(v -> { selectedHistoryDate = key; renderCalendar(); });
+            grid.addView(cell, gridCell());
+        }
+        marginTop(grid, 10);
+        calendarCard.addView(grid);
+        content.addView(calendarCard);
+
+        if (selectedHistoryDate != null) {
+            content.addView(section(formatDate(selectedHistoryDate)));
+            boolean found = false;
+            for (Session s : sorted()) if (s.date.equals(selectedHistoryDate)) { content.addView(sessionCard(s)); found = true; }
+            if (!found) content.addView(empty("Nessun allenamento in questa giornata."));
+        } else {
+            TextView hint = text("Tocca un giorno per vedere o aggiungere un allenamento.", 14, MUTED, false);
+            hint.setGravity(Gravity.CENTER);
+            hint.setPadding(dp(8), dp(8), dp(8), dp(14));
+            content.addView(hint);
+        }
         Button add = primary("＋  NUOVO ALLENAMENTO");
         add.setOnClickListener(v -> showEditor(null));
         marginTop(add, 12);
         content.addView(add);
+    }
+
+    private GridLayout.LayoutParams gridCell() {
+        GridLayout.LayoutParams p = new GridLayout.LayoutParams();
+        p.width = 0;
+        p.height = dp(48);
+        p.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+        p.setMargins(dp(1), dp(1), dp(1), dp(1));
+        return p;
+    }
+
+    private boolean hasTraining(String date) {
+        for (Session s : sessions) if (s.date.equals(date)) return true;
+        return false;
     }
 
     private View sessionCard(Session s) {
@@ -158,6 +253,11 @@ public class MainActivity extends Activity {
             TextView notes = text("Note: " + s.notes, 14, MUTED, false);
             notes.setPadding(0, dp(8), 0, 0);
             card.addView(notes);
+        }
+        if (!s.photoUri.isEmpty()) {
+            ImageView photo = trainingPhoto(s.photoUri, 150);
+            marginTop(photo, 11);
+            card.addView(photo);
         }
         LinearLayout actions = row();
         Button edit = smallButton("MODIFICA");
@@ -221,6 +321,22 @@ public class MainActivity extends Activity {
         if (editing) notes.setText(existing.notes);
         content.addView(notes);
 
+        content.addView(label("Foto dell’allenamento (facoltativa)"));
+        editorPhotoUri = editing ? existing.photoUri : "";
+        editorPhotoPreview = trainingPhoto(editorPhotoUri, 190);
+        editorPhotoPreview.setVisibility(editorPhotoUri.isEmpty() ? View.GONE : View.VISIBLE);
+        content.addView(editorPhotoPreview);
+        LinearLayout photoActions = row();
+        Button choosePhoto = secondary(editorPhotoUri.isEmpty() ? "AGGIUNGI FOTO" : "CAMBIA FOTO");
+        choosePhoto.setOnClickListener(v -> pickPhoto());
+        photoActions.addView(choosePhoto, weight());
+        photoActions.addView(space(8));
+        Button removePhoto = secondary("RIMUOVI");
+        removePhoto.setOnClickListener(v -> { editorPhotoUri = ""; editorPhotoPreview.setImageDrawable(null); editorPhotoPreview.setVisibility(View.GONE); });
+        photoActions.addView(removePhoto, weight());
+        marginTop(photoActions, 7);
+        content.addView(photoActions);
+
         Button save = primary(editing ? "SALVA MODIFICHE" : "SALVA ALLENAMENTO");
         marginTop(save, 20);
         save.setOnClickListener(v -> {
@@ -236,7 +352,7 @@ public class MainActivity extends Activity {
                 return;
             }
             if (editing) sessions.remove(existing);
-            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim()));
+            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), editorPhotoUri));
             save();
             Toast.makeText(this, editing ? "Allenamento aggiornato" : "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -305,10 +421,18 @@ public class MainActivity extends Activity {
         notes.setMinLines(3);
         notes.setGravity(Gravity.TOP);
         content.addView(notes);
+        content.addView(label("Foto dell’allenamento (facoltativa)"));
+        editorPhotoUri = "";
+        editorPhotoPreview = trainingPhoto("", 190);
+        editorPhotoPreview.setVisibility(View.GONE);
+        content.addView(editorPhotoPreview);
+        Button choosePhoto = secondary("AGGIUNGI FOTO");
+        choosePhoto.setOnClickListener(v -> pickPhoto());
+        content.addView(choosePhoto);
         Button save = primary("SALVA ALLENAMENTO");
         marginTop(save, 20);
         save.setOnClickListener(v -> {
-            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim()));
+            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), editorPhotoUri));
             save();
             Toast.makeText(this, "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -373,7 +497,7 @@ public class MainActivity extends Activity {
             JSONArray a = new JSONArray(prefs.getString("sessions", "[]"));
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i);
-                sessions.add(new Session(o.optLong("id", i), o.optString("date"), o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes")));
+                sessions.add(new Session(o.optLong("id", i), o.optString("date"), o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("photoUri")));
             }
         } catch (JSONException ignored) {}
     }
@@ -382,7 +506,7 @@ public class MainActivity extends Activity {
         JSONArray a = new JSONArray();
         for (Session s : sessions) {
             JSONObject o = new JSONObject();
-            try { o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); a.put(o); }
+            try { o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("photoUri", s.photoUri); a.put(o); }
             catch (JSONException ignored) {}
         }
         prefs.edit().putString("sessions", a.toString()).apply();
@@ -415,6 +539,7 @@ public class MainActivity extends Activity {
     private Button link(String s) { Button b = button(s); b.setTextColor(NAVY); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackgroundColor(Color.TRANSPARENT); return b; }
     private Button inputButton(String s) { Button b = button(s); b.setTextColor(Color.rgb(35, 55, 70)); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return b; }
     private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(14); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setAllCaps(false); return b; }
+    private ImageView trainingPhoto(String uri, int height) { ImageView v = new ImageView(this); v.setScaleType(ImageView.ScaleType.CENTER_CROP); v.setBackground(round(Color.rgb(225, 233, 238), 12, Color.TRANSPARENT, 0)); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(height))); if (uri != null && !uri.isEmpty()) try { v.setImageURI(Uri.parse(uri)); } catch (Exception ignored) {} return v; }
     private GradientDrawable round(int fill, int radius, int stroke, int width) { GradientDrawable g = new GradientDrawable(); g.setColor(fill); g.setCornerRadius(dp(radius)); if (width > 0) g.setStroke(dp(width), stroke); return g; }
     private View space(int width) { View v = new View(this); v.setLayoutParams(new LinearLayout.LayoutParams(dp(width), 1)); return v; }
     private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, -2, 1); }
@@ -422,12 +547,33 @@ public class MainActivity extends Activity {
     private void marginBottom(View v, int n) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.setMargins(0, 0, 0, dp(n)); v.setLayoutParams(p); }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
 
+    private void pickPhoto() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, PICK_PHOTO);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_PHOTO && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri uri = data.getData();
+            try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+            editorPhotoUri = uri.toString();
+            if (editorPhotoPreview != null) {
+                editorPhotoPreview.setImageURI(uri);
+                editorPhotoPreview.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
     @Override public void onBackPressed() {
         if (homeVisible) super.onBackPressed(); else showHome();
     }
 
     static class Session {
-        final long id; final String date, goal, work, notes; final int minutes;
-        Session(long id, String date, String goal, int minutes, String work, String notes) { this.id = id; this.date = date; this.goal = goal; this.minutes = minutes; this.work = work; this.notes = notes; }
+        final long id; final String date, goal, work, notes, photoUri; final int minutes;
+        Session(long id, String date, String goal, int minutes, String work, String notes, String photoUri) { this.id = id; this.date = date; this.goal = goal; this.minutes = minutes; this.work = work; this.notes = notes; this.photoUri = photoUri == null ? "" : photoUri; }
     }
 }
