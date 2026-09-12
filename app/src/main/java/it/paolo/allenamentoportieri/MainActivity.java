@@ -6,12 +6,19 @@ import android.app.DatePickerDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
@@ -28,6 +35,7 @@ import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -57,12 +65,14 @@ import java.util.HashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int NAVY = Color.rgb(16, 42, 67);
     private static final int GREEN = Color.rgb(18, 184, 134);
     private static final int PAGE = Color.rgb(242, 246, 248);
-    private static final int MUTED = Color.rgb(91, 110, 127);
+    private static final int MUTED = Color.rgb(74, 92, 108);
     private static final String[] GOALS = {"Reattività", "Uscite alte", "Uno contro uno", "Gioco con i piedi", "Forza e mobilità", "Altro"};
     private static final int PICK_PHOTO = 40;
     private static final int EXPORT_BACKUP = 41;
@@ -81,6 +91,7 @@ public class MainActivity extends Activity {
     private String historyGoalFilter = "Tutte le tipologie";
     private String historySeasonFilter = "Tutte le stagioni";
     private String historyPersonFilter = "Tutti i portieri";
+    private final ExecutorService backupExecutor = Executors.newSingleThreadExecutor();
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -191,7 +202,7 @@ public class MainActivity extends Activity {
             actions.addView(rename, weight()); actions.addView(space(8));
             Button delete = smallButton("ELIMINA DALLA LISTA");
             delete.setTextColor(Color.rgb(190, 50, 50));
-            delete.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Eliminare " + name + " dalla lista?").setMessage("Gli allenamenti già registrati resteranno invariati.").setNegativeButton("Annulla", null).setPositiveButton("Elimina", (d, w) -> { goalkeepers.remove(name); saveGoalkeepers(); showGoalkeepers(); }).show());
+            delete.setOnClickListener(v -> tint(new AlertDialog.Builder(this).setTitle("Eliminare " + name + " dalla lista?").setMessage("Gli allenamenti già registrati resteranno invariati.").setNegativeButton("Annulla", null).setPositiveButton("Elimina", (d, w) -> { goalkeepers.remove(name); saveGoalkeepers(); showGoalkeepers(); }).show()));
             actions.addView(delete, weight()); marginTop(actions, 10); item.addView(actions); content.addView(item);
         }
         Button add = primary("＋  AGGIUNGI PORTIERE");
@@ -203,14 +214,14 @@ public class MainActivity extends Activity {
         EditText field = input("Nome e cognome", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         if (oldName != null) field.setText(oldName);
         int padding = dp(20); FrameLayout wrap = new FrameLayout(this); wrap.setPadding(padding, dp(8), padding, 0); wrap.addView(field);
-        new AlertDialog.Builder(this).setTitle(oldName == null ? "Nuovo portiere" : "Modifica portiere").setView(wrap).setNegativeButton("Annulla", null).setPositiveButton("Salva", (d, w) -> {
+        tint(new AlertDialog.Builder(this).setTitle(oldName == null ? "Nuovo portiere" : "Modifica portiere").setView(wrap).setNegativeButton("Annulla", null).setPositiveButton("Salva", (d, w) -> {
             String name = field.getText().toString().trim();
             if (name.isEmpty()) { Toast.makeText(this, "Inserisci il nome", Toast.LENGTH_SHORT).show(); return; }
             if (oldName != null && !oldName.equals(name)) renameGoalkeeperInSessions(oldName, name);
             if (oldName != null) goalkeepers.remove(oldName);
             if (!goalkeepers.contains(name)) goalkeepers.add(name);
             Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers(); save(); showGoalkeepers();
-        }).show();
+        }).show());
     }
 
     private void renameGoalkeeperInSessions(String oldName, String newName) {
@@ -434,11 +445,15 @@ public class MainActivity extends Activity {
         TextView dateLabel = label("Data");
         content.addView(dateLabel);
         Button date = inputButton(formatDate(dateValue[0]));
-        date.setOnClickListener(v -> new DatePickerDialog(this, (view, y, m, d) -> {
-            selected.set(y, m, d);
-            dateValue[0] = iso.format(selected.getTime());
-            date.setText(formatDate(dateValue[0]));
-        }, selected.get(Calendar.YEAR), selected.get(Calendar.MONTH), selected.get(Calendar.DAY_OF_MONTH)).show());
+        date.setOnClickListener(v -> {
+            DatePickerDialog picker = new DatePickerDialog(this, (view, y, m, d) -> {
+                selected.set(y, m, d);
+                dateValue[0] = iso.format(selected.getTime());
+                date.setText(formatDate(dateValue[0]));
+            }, selected.get(Calendar.YEAR), selected.get(Calendar.MONTH), selected.get(Calendar.DAY_OF_MONTH));
+            picker.show();
+            tint(picker);
+        });
         content.addView(date);
 
         content.addView(label("Stagione"));
@@ -661,11 +676,11 @@ public class MainActivity extends Activity {
     }
 
     private void confirmDelete(Session s) {
-        new AlertDialog.Builder(this).setTitle("Eliminare l’allenamento?")
+        tint(new AlertDialog.Builder(this).setTitle("Eliminare l’allenamento?")
                 .setMessage(formatDate(s.date) + "\n" + s.goal)
                 .setNegativeButton("Annulla", null)
                 .setPositiveButton("Elimina", (d, w) -> { sessions.remove(s); save(); showHistory(); })
-                .show();
+                .show());
     }
 
     private void load() {
@@ -722,63 +737,113 @@ public class MainActivity extends Activity {
     }
 
     private void writeBackup(Uri destination) {
-        try (OutputStream raw = getContentResolver().openOutputStream(destination); ZipOutputStream zip = new ZipOutputStream(raw)) {
-            JSONArray data = new JSONArray();
-            for (Session s : sessions) {
-                JSONObject o = sessionJson(s);
-                JSONArray photoNames = new JSONArray();
-                for (int i = 0; i < s.photoUris.size(); i++) {
-                    String name = "photos/" + s.id + "_" + i + ".img";
-                    try (InputStream in = getContentResolver().openInputStream(Uri.parse(s.photoUris.get(i)))) {
-                        if (in == null) continue;
-                        zip.putNextEntry(new ZipEntry(name)); copy(in, zip); zip.closeEntry(); photoNames.put(name);
-                    } catch (Exception ignored) {}
+        // Snapshot the data on the UI thread: sessions/goalkeepers must not be
+        // touched from the background thread while it's exporting.
+        List<Session> snapshot = new ArrayList<>(sessions);
+        List<String> roster = new ArrayList<>(goalkeepers);
+        AlertDialog progress = showProgress("Esportazione backup in corso…");
+        backupExecutor.execute(() -> {
+            String message;
+            try (OutputStream raw = getContentResolver().openOutputStream(destination); ZipOutputStream zip = new ZipOutputStream(raw)) {
+                JSONArray data = new JSONArray();
+                for (Session s : snapshot) {
+                    JSONObject o = sessionJson(s);
+                    JSONArray photoNames = new JSONArray();
+                    for (int i = 0; i < s.photoUris.size(); i++) {
+                        String name = "photos/" + s.id + "_" + i + ".img";
+                        try (InputStream in = getContentResolver().openInputStream(Uri.parse(s.photoUris.get(i)))) {
+                            if (in == null) continue;
+                            zip.putNextEntry(new ZipEntry(name)); copy(in, zip); zip.closeEntry(); photoNames.put(name);
+                        } catch (Exception ignored) {}
+                    }
+                    o.put("backupPhotos", photoNames); data.put(o);
                 }
-                o.put("backupPhotos", photoNames); data.put(o);
-            }
-            JSONObject backup = new JSONObject(); backup.put("version", 2); backup.put("sessions", data); JSONArray roster = new JSONArray(); for (String name : goalkeepers) roster.put(name); backup.put("goalkeepers", roster);
-            zip.putNextEntry(new ZipEntry("data.json"));
-            zip.write(backup.toString().getBytes("UTF-8"));
-            zip.closeEntry();
-            Toast.makeText(this, "Backup esportato correttamente", Toast.LENGTH_LONG).show();
-        } catch (Exception e) { Toast.makeText(this, "Errore durante il backup: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+                JSONObject backup = new JSONObject(); backup.put("version", 2); backup.put("sessions", data);
+                JSONArray rosterJson = new JSONArray(); for (String name : roster) rosterJson.put(name); backup.put("goalkeepers", rosterJson);
+                zip.putNextEntry(new ZipEntry("data.json"));
+                zip.write(backup.toString().getBytes("UTF-8"));
+                zip.closeEntry();
+                message = "Backup esportato correttamente";
+            } catch (Exception e) { message = "Errore durante il backup: " + e.getMessage(); }
+            String finalMessage = message;
+            runOnUiThread(() -> { progress.dismiss(); Toast.makeText(this, finalMessage, Toast.LENGTH_LONG).show(); });
+        });
     }
 
     private void readBackup(Uri source) {
-        File photoDir = new File(getFilesDir(), "backup_photos");
-        if (!photoDir.exists()) photoDir.mkdirs();
-        String json = null;
-        Map<String, String> importedPhotos = new HashMap<>();
-        try (InputStream raw = getContentResolver().openInputStream(source); ZipInputStream zip = new ZipInputStream(raw)) {
-            ZipEntry entry;
-            byte[] buffer = new byte[16384];
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.getName().equals("data.json")) {
-                    ByteArrayOutputStream out = new ByteArrayOutputStream(); copy(zip, out); json = out.toString("UTF-8");
-                } else if (entry.getName().startsWith("photos/") && !entry.isDirectory()) {
-                    String safeName = new File(entry.getName()).getName();
-                    File target = new File(photoDir, System.currentTimeMillis() + "_" + safeName);
-                    try (FileOutputStream out = new FileOutputStream(target)) { int n; while ((n = zip.read(buffer)) > 0) out.write(buffer, 0, n); }
-                    importedPhotos.put(entry.getName(), Uri.fromFile(target).toString());
-                }
-                zip.closeEntry();
-            }
-            if (json == null) throw new Exception("File dati non trovato");
-            JSONArray a; JSONArray importedRoster = null;
-            if (json.trim().startsWith("[")) a = new JSONArray(json); else { JSONObject root = new JSONObject(json); a = root.optJSONArray("sessions"); importedRoster = root.optJSONArray("goalkeepers"); }
-            if (a == null) throw new Exception("Elenco allenamenti non trovato");
-            if (importedRoster != null) for (int r = 0; r < importedRoster.length(); r++) { String name = importedRoster.optString(r).trim(); if (!name.isEmpty() && !goalkeepers.contains(name)) goalkeepers.add(name); }
+        AlertDialog progress = showProgress("Importazione backup in corso…");
+        backupExecutor.execute(() -> {
+            File photoDir = new File(getFilesDir(), "backup_photos");
+            if (!photoDir.exists()) photoDir.mkdirs();
+            String json = null;
+            Map<String, String> importedPhotos = new HashMap<>();
+            String error = null;
+            List<Session> newSessions = new ArrayList<>();
+            List<String> newRosterNames = new ArrayList<>();
             int imported = 0;
-            for (int i = 0; i < a.length(); i++) {
-                JSONObject o = a.getJSONObject(i); List<String> photos = new ArrayList<>(); JSONArray names = o.optJSONArray("backupPhotos");
-                if (names != null) for (int p = 0; p < names.length(); p++) { String uri = importedPhotos.get(names.optString(p)); if (uri != null) photos.add(uri); }
-                long id = o.optLong("id", System.currentTimeMillis() + i); removeSessionById(id);
-                String date = o.optString("date", iso.format(new Date()));
-                sessions.add(new Session(id, date, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(date)), o.optString("participants"), photos)); imported++;
-            }
-            for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!goalkeepers.contains(name)) goalkeepers.add(name); Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers();
-            save(); Toast.makeText(this, imported + " allenamenti importati", Toast.LENGTH_LONG).show(); showHome();
-        } catch (Exception e) { Toast.makeText(this, "Backup non valido: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+            try (InputStream raw = getContentResolver().openInputStream(source); ZipInputStream zip = new ZipInputStream(raw)) {
+                ZipEntry entry;
+                byte[] buffer = new byte[16384];
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (entry.getName().equals("data.json")) {
+                        ByteArrayOutputStream out = new ByteArrayOutputStream(); copy(zip, out); json = out.toString("UTF-8");
+                    } else if (entry.getName().startsWith("photos/") && !entry.isDirectory()) {
+                        String safeName = new File(entry.getName()).getName();
+                        File target = new File(photoDir, System.currentTimeMillis() + "_" + safeName);
+                        try (FileOutputStream out = new FileOutputStream(target)) { int n; while ((n = zip.read(buffer)) > 0) out.write(buffer, 0, n); }
+                        importedPhotos.put(entry.getName(), Uri.fromFile(target).toString());
+                    }
+                    zip.closeEntry();
+                }
+                if (json == null) throw new Exception("File dati non trovato");
+                JSONArray a; JSONArray importedRoster = null;
+                if (json.trim().startsWith("[")) a = new JSONArray(json); else { JSONObject root = new JSONObject(json); a = root.optJSONArray("sessions"); importedRoster = root.optJSONArray("goalkeepers"); }
+                if (a == null) throw new Exception("Elenco allenamenti non trovato");
+                if (importedRoster != null) for (int r = 0; r < importedRoster.length(); r++) { String name = importedRoster.optString(r).trim(); if (!name.isEmpty()) newRosterNames.add(name); }
+                for (int i = 0; i < a.length(); i++) {
+                    JSONObject o = a.getJSONObject(i); List<String> photos = new ArrayList<>(); JSONArray names = o.optJSONArray("backupPhotos");
+                    if (names != null) for (int p = 0; p < names.length(); p++) { String uri = importedPhotos.get(names.optString(p)); if (uri != null) photos.add(uri); }
+                    long id = o.optLong("id", System.currentTimeMillis() + i);
+                    String date = o.optString("date", iso.format(new Date()));
+                    newSessions.add(new Session(id, date, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(date)), o.optString("participants"), photos));
+                    imported++;
+                }
+            } catch (Exception e) { error = "Backup non valido: " + e.getMessage(); }
+            String finalError = error;
+            int finalImported = imported;
+            runOnUiThread(() -> {
+                progress.dismiss();
+                if (finalError != null) { Toast.makeText(this, finalError, Toast.LENGTH_LONG).show(); return; }
+                // Applica i risultati alle liste vere solo qui, sul thread UI.
+                for (String name : newRosterNames) if (!goalkeepers.contains(name)) goalkeepers.add(name);
+                for (Session s : newSessions) { removeSessionById(s.id); sessions.add(s); }
+                for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!goalkeepers.contains(name)) goalkeepers.add(name);
+                Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers();
+                save();
+                Toast.makeText(this, finalImported + " allenamenti importati", Toast.LENGTH_LONG).show();
+                showHome();
+            });
+        });
+    }
+
+    private AlertDialog tint(AlertDialog d) {
+        Button pos = d.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (pos != null) pos.setTextColor(GREEN);
+        Button neg = d.getButton(AlertDialog.BUTTON_NEGATIVE);
+        if (neg != null) neg.setTextColor(MUTED);
+        return d;
+    }
+
+    private AlertDialog showProgress(String message) {
+        LinearLayout box = row();
+        box.setPadding(dp(24), dp(20), dp(24), dp(20));
+        ProgressBar bar = new ProgressBar(this);
+        box.addView(bar);
+        TextView label = text(message, 15, NAVY, false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMargins(dp(16), 0, 0, 0);
+        box.addView(label, lp);
+        return new AlertDialog.Builder(this).setView(box).setCancelable(false).show();
     }
 
     private JSONObject sessionJson(Session s) throws JSONException { JSONObject o = new JSONObject(); o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("season", s.season); o.put("participants", s.participants); return o; }
@@ -801,7 +866,7 @@ public class MainActivity extends Activity {
     private List<String> splitPeople(String value) { List<String> result = new ArrayList<>(); if (value == null) return result; for (String raw : value.split("[\\n,;]+")) { String name = raw.trim(); if (!name.isEmpty() && !result.contains(name)) result.add(name); } return result; }
     private String[] people() { List<String> values = new ArrayList<>(); for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!values.contains(name)) values.add(name); Collections.sort(values, String.CASE_INSENSITIVE_ORDER); return values.toArray(new String[0]); }
     private String numberedExercises(String work) { StringBuilder out = new StringBuilder(); int n = 1; for (String raw : work.split("\\n+")) { String line = raw.trim(); if (!line.isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(n++).append(". ").append(line); } } return out.toString(); }
-    private LinearLayout goalkeeperSelector(String selectedNames) { LinearLayout box = card(); List<String> selected = splitPeople(selectedNames); if (goalkeepers.isEmpty()) box.addView(text("Prima aggiungi almeno un portiere alla lista.", 14, MUTED, false)); else for (String name : goalkeepers) { CheckBox check = new CheckBox(this); check.setText(name); check.setTextSize(16); check.setTextColor(NAVY); check.setPadding(dp(2), dp(5), dp(2), dp(5)); check.setChecked(selected.contains(name)); box.addView(check); } return box; }
+    private LinearLayout goalkeeperSelector(String selectedNames) { LinearLayout box = card(); List<String> selected = splitPeople(selectedNames); if (goalkeepers.isEmpty()) box.addView(text("Prima aggiungi almeno un portiere alla lista.", 14, MUTED, false)); else for (String name : goalkeepers) { CheckBox check = new CheckBox(this); check.setText(name); check.setTextSize(16); check.setTextColor(NAVY); check.setButtonTintList(ColorStateList.valueOf(GREEN)); check.setPadding(dp(2), dp(5), dp(2), dp(5)); check.setChecked(selected.contains(name)); box.addView(check); } return box; }
     private String collectSelectedGoalkeepers(LinearLayout container) { List<String> names = new ArrayList<>(); for (int i = 0; i < container.getChildCount(); i++) if (container.getChildAt(i) instanceof CheckBox) { CheckBox check = (CheckBox) container.getChildAt(i); if (check.isChecked()) names.add(check.getText().toString()); } return joinLines(names); }
     private String joinLines(List<String> names) { StringBuilder out = new StringBuilder(); for (String name : names) { if (out.length() > 0) out.append("\n"); out.append(name); } return out.toString(); }
 
@@ -809,10 +874,10 @@ public class MainActivity extends Activity {
         ExerciseDiagramView diagram = new ExerciseDiagramView(this, description);
         int height = dp(390);
         diagram.setLayoutParams(new LinearLayout.LayoutParams(-1, height));
-        new AlertDialog.Builder(this).setTitle("Schema automatico dell’esercizio").setView(diagram).setMessage("Schema indicativo creato dalle parole della descrizione.").setPositiveButton("Chiudi", null).show();
+        tint(new AlertDialog.Builder(this).setTitle("Schema automatico dell’esercizio").setView(diagram).setMessage("Schema indicativo creato dalle parole della descrizione.").setPositiveButton("Chiudi", null).show());
     }
 
-    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(round(Color.WHITE, 14, Color.rgb(222, 230, 235), 1)); marginBottom(v, 12); return v; }
+    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(round(Color.WHITE, 14, Color.rgb(222, 230, 235), 1)); v.setElevation(dp(2)); marginBottom(v, 12); return v; }
     private LinearLayout row() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
     private View stat(String title, String value) { LinearLayout v = card(); TextView n = text(value, 27, NAVY, true); TextView l = text(title, 11, MUTED, true); l.setPadding(0, dp(3), 0, 0); v.addView(n); v.addView(l); return v; }
     private TextView section(String s) { TextView v = text(s, 19, NAVY, true); v.setPadding(dp(2), dp(22), 0, dp(11)); return v; }
@@ -822,17 +887,67 @@ public class MainActivity extends Activity {
     private TextView pill(String s, int bg, int fg) { TextView v = text(s, 12, fg, true); v.setPadding(dp(10), dp(5), dp(10), dp(5)); v.setBackground(round(bg, 30, Color.TRANSPARENT, 0)); return v; }
     private TextView inputDisplay(String s) { TextView v = text(s, 16, Color.rgb(35, 55, 70), false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return v; }
     private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(Color.rgb(30, 48, 62)); v.setHintTextColor(Color.rgb(135, 149, 159)); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return v; }
-    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(16); t.setTextColor(Color.rgb(35, 55, 70)); t.setPadding(dp(13), dp(13), dp(13), dp(13)); return t; }}; v.setAdapter(adapter); v.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return v; }
-    private Button primary(String s) { Button b = button(s); b.setTextColor(Color.WHITE); b.setBackground(round(GREEN, 12, Color.TRANSPARENT, 0)); b.setMinHeight(dp(52)); return b; }
-    private Button secondary(String s) { Button b = button(s); b.setTextColor(NAVY); b.setBackground(round(Color.WHITE, 12, Color.rgb(188, 203, 213), 1)); b.setMinHeight(dp(50)); return b; }
-    private Button smallButton(String s) { Button b = button(s); b.setTextColor(NAVY); b.setTextSize(12); b.setBackground(round(Color.rgb(241, 245, 247), 9, Color.rgb(218, 227, 232), 1)); return b; }
-    private Button link(String s) { Button b = button(s); b.setTextColor(NAVY); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackgroundColor(Color.TRANSPARENT); return b; }
-    private Button inputButton(String s) { Button b = button(s); b.setTextColor(Color.rgb(35, 55, 70)); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return b; }
+    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(16); t.setTextColor(Color.rgb(35, 55, 70)); t.setPadding(dp(13), dp(13), dp(13), dp(13)); return t; }}; v.setAdapter(adapter); v.setBackground(withCaret(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1))); v.setPadding(dp(13), dp(13), dp(30), dp(13)); return v; }
+    private Button primary(String s) { Button b = button(s); b.setTextColor(Color.WHITE); b.setBackground(rippleRound(GREEN, 12)); b.setMinHeight(dp(52)); return b; }
+    private Button secondary(String s) { Button b = button(s); b.setTextColor(NAVY); b.setBackground(rippleRound(Color.WHITE, 12, Color.rgb(188, 203, 213), 1)); b.setMinHeight(dp(50)); return b; }
+    private Button smallButton(String s) { Button b = button(s); b.setTextColor(NAVY); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(241, 245, 247), 9, Color.rgb(218, 227, 232), 1)); return b; }
+    private Button link(String s) { Button b = button(s); b.setTextColor(NAVY); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(35, 16, 42, 67)), null, null)); return b; }
+    private Button inputButton(String s) { Button b = button(s); b.setTextColor(Color.rgb(35, 55, 70)); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(rippleRound(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return b; }
     private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(14); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setAllCaps(false); return b; }
-    private ImageView trainingPhoto(String uri, int height) { ImageView v = new ImageView(this); v.setScaleType(ImageView.ScaleType.CENTER_CROP); v.setBackground(round(Color.rgb(225, 233, 238), 12, Color.TRANSPARENT, 0)); v.setLayoutParams(new LinearLayout.LayoutParams(dp(180), dp(height))); if (uri != null && !uri.isEmpty()) try { v.setImageURI(Uri.parse(uri)); } catch (Exception ignored) {} return v; }
+    private ImageView trainingPhoto(String uri, int height) {
+        ImageView v = new ImageView(this);
+        v.setLayoutParams(new LinearLayout.LayoutParams(dp(180), dp(height)));
+        v.setBackground(round(Color.rgb(225, 233, 238), 12, Color.TRANSPARENT, 0));
+        boolean loaded = false;
+        if (uri != null && !uri.isEmpty()) {
+            try (InputStream test = getContentResolver().openInputStream(Uri.parse(uri))) {
+                if (test != null) { v.setImageURI(Uri.parse(uri)); loaded = true; }
+            } catch (Exception ignored) {}
+        }
+        if (loaded) {
+            v.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        } else {
+            // La foto originale non è più raggiungibile (es. rimossa dalla galleria):
+            // mostriamo un'icona invece di lasciare il riquadro vuoto.
+            v.setScaleType(ImageView.ScaleType.CENTER);
+            v.setImageResource(android.R.drawable.ic_menu_report_image);
+            v.setColorFilter(MUTED);
+        }
+        return v;
+    }
     private View photoGallery(List<String> uris, int height) { HorizontalScrollView scroll = new HorizontalScrollView(this); LinearLayout strip = new LinearLayout(this); strip.setOrientation(LinearLayout.HORIZONTAL); strip.setPadding(0, dp(11), 0, 0); for (String uri : uris) { ImageView photo = trainingPhoto(uri, height); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(180), dp(height)); p.setMargins(0, 0, dp(8), 0); strip.addView(photo, p); } scroll.addView(strip); return scroll; }
     private void renderEditorPhotos() { if (editorPhotoStrip == null) return; editorPhotoStrip.removeAllViews(); if (editorPhotoUris.isEmpty()) { TextView hint = text("Nessuna foto selezionata", 14, MUTED, false); hint.setGravity(Gravity.CENTER_VERTICAL); editorPhotoStrip.addView(hint, new LinearLayout.LayoutParams(dp(240), dp(120))); return; } for (String uri : editorPhotoUris) { ImageView photo = trainingPhoto(uri, 120); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(160), dp(120)); p.setMargins(0, 0, dp(8), 0); editorPhotoStrip.addView(photo, p); } }
     private GradientDrawable round(int fill, int radius, int stroke, int width) { GradientDrawable g = new GradientDrawable(); g.setColor(fill); g.setCornerRadius(dp(radius)); if (width > 0) g.setStroke(dp(width), stroke); return g; }
+    private Drawable rippleRound(int fill, int radius) { return rippleRound(fill, radius, Color.TRANSPARENT, 0); }
+    private Drawable rippleRound(int fill, int radius, int stroke, int strokeWidth) {
+        GradientDrawable base = round(fill, radius, stroke, strokeWidth);
+        GradientDrawable mask = round(Color.WHITE, radius, Color.TRANSPARENT, 0);
+        int rippleColor = Color.argb(45, 0, 0, 0);
+        return new RippleDrawable(ColorStateList.valueOf(rippleColor), base, mask);
+    }
+    private Drawable withCaret(GradientDrawable base) {
+        LayerDrawable layered = new LayerDrawable(new Drawable[]{base, new CaretDrawable(MUTED)});
+        layered.setLayerGravity(1, Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        layered.setLayerInset(1, 0, 0, dp(14), 0);
+        layered.setLayerSize(1, dp(11), dp(7));
+        return layered;
+    }
+    static class CaretDrawable extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        CaretDrawable(int color) { paint.setColor(color); paint.setStyle(Paint.Style.FILL); }
+        @Override public void draw(Canvas c) {
+            Rect b = getBounds();
+            Path p = new Path();
+            p.moveTo(b.left, b.top);
+            p.lineTo(b.right, b.top);
+            p.lineTo(b.centerX(), b.bottom);
+            p.close();
+            c.drawPath(p, paint);
+        }
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { paint.setColorFilter(cf); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
     private View space(int width) { View v = new View(this); v.setLayoutParams(new LinearLayout.LayoutParams(dp(width), 1)); return v; }
     private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, -2, 1); }
     private void marginTop(View v, int n) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.setMargins(0, dp(n), 0, 0); v.setLayoutParams(p); }
