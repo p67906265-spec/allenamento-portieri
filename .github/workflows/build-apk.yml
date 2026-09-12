@@ -19,8 +19,8 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v1.3-completo
+          name: Allenamento-Portieri-v1.4-lista-portieri
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

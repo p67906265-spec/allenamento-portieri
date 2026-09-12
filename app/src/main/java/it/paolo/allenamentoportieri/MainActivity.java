@@ -21,6 +21,7 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
@@ -69,6 +70,7 @@ public class MainActivity extends Activity {
     private final SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ITALY);
     private final SimpleDateFormat pretty = new SimpleDateFormat("EEEE d MMMM yyyy", Locale.ITALY);
     private final List<Session> sessions = new ArrayList<>();
+    private final List<String> goalkeepers = new ArrayList<>();
     private SharedPreferences prefs;
     private LinearLayout content;
     private boolean homeVisible;
@@ -84,6 +86,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         prefs = getSharedPreferences("goalkeeper_training", MODE_PRIVATE);
         load();
+        loadGoalkeepers();
         showHome();
     }
 
@@ -123,6 +126,12 @@ public class MainActivity extends Activity {
         stats.addView(stat("MINUTI TOTALI", String.valueOf(totalMinutes())), weight());
         content.addView(stats);
 
+        content.addView(section("Allenamenti per portiere"));
+        addGoalkeeperCounts(content);
+        Button manageGoalkeepers = secondary("GESTIONE PORTIERI");
+        manageGoalkeepers.setOnClickListener(v -> showGoalkeepers());
+        content.addView(manageGoalkeepers);
+
         Button add = primary("＋  REGISTRA ALLENAMENTO");
         add.setOnClickListener(v -> showEditor(null));
         marginTop(add, 18);
@@ -160,6 +169,66 @@ public class MainActivity extends Activity {
         backupActions.addView(importButton, weight());
         content.addView(backupActions);
     }
+
+    private void showGoalkeepers() {
+        homeVisible = false;
+        base("Gestione portieri", "Crea la lista da usare negli allenamenti");
+        Button back = link("‹  Torna alla home");
+        back.setOnClickListener(v -> showHome());
+        content.addView(back);
+        if (goalkeepers.isEmpty()) content.addView(empty("La lista è vuota.\nAggiungi il primo portiere."));
+        for (String name : new ArrayList<>(goalkeepers)) {
+            LinearLayout item = card();
+            LinearLayout line = row();
+            TextView title = text(name, 18, NAVY, true);
+            line.addView(title, weight());
+            TextView count = pill(trainingCount(name) + " sedute", Color.rgb(225, 233, 238), NAVY);
+            line.addView(count);
+            item.addView(line);
+            LinearLayout actions = row();
+            Button rename = smallButton("MODIFICA");
+            rename.setOnClickListener(v -> goalkeeperDialog(name));
+            actions.addView(rename, weight()); actions.addView(space(8));
+            Button delete = smallButton("ELIMINA DALLA LISTA");
+            delete.setTextColor(Color.rgb(190, 50, 50));
+            delete.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Eliminare " + name + " dalla lista?").setMessage("Gli allenamenti già registrati resteranno invariati.").setNegativeButton("Annulla", null).setPositiveButton("Elimina", (d, w) -> { goalkeepers.remove(name); saveGoalkeepers(); showGoalkeepers(); }).show());
+            actions.addView(delete, weight()); marginTop(actions, 10); item.addView(actions); content.addView(item);
+        }
+        Button add = primary("＋  AGGIUNGI PORTIERE");
+        add.setOnClickListener(v -> goalkeeperDialog(null));
+        marginTop(add, 10); content.addView(add);
+    }
+
+    private void goalkeeperDialog(String oldName) {
+        EditText field = input("Nome e cognome", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        if (oldName != null) field.setText(oldName);
+        int padding = dp(20); FrameLayout wrap = new FrameLayout(this); wrap.setPadding(padding, dp(8), padding, 0); wrap.addView(field);
+        new AlertDialog.Builder(this).setTitle(oldName == null ? "Nuovo portiere" : "Modifica portiere").setView(wrap).setNegativeButton("Annulla", null).setPositiveButton("Salva", (d, w) -> {
+            String name = field.getText().toString().trim();
+            if (name.isEmpty()) { Toast.makeText(this, "Inserisci il nome", Toast.LENGTH_SHORT).show(); return; }
+            if (oldName != null && !oldName.equals(name)) renameGoalkeeperInSessions(oldName, name);
+            if (oldName != null) goalkeepers.remove(oldName);
+            if (!goalkeepers.contains(name)) goalkeepers.add(name);
+            Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers(); save(); showGoalkeepers();
+        }).show();
+    }
+
+    private void renameGoalkeeperInSessions(String oldName, String newName) {
+        for (int i = 0; i < sessions.size(); i++) {
+            Session s = sessions.get(i); List<String> names = splitPeople(s.participants); boolean changed = false;
+            for (int p = 0; p < names.size(); p++) if (names.get(p).equals(oldName)) { names.set(p, newName); changed = true; }
+            if (changed) sessions.set(i, new Session(s.id, s.date, s.goal, s.minutes, s.work, s.notes, s.season, joinLines(names), new ArrayList<>(s.photoUris)));
+        }
+    }
+
+    private void addGoalkeeperCounts(LinearLayout target) {
+        LinearLayout counts = card();
+        if (goalkeepers.isEmpty()) counts.addView(text("Nessun portiere nella lista.", 14, MUTED, false));
+        else for (String name : goalkeepers) { int n = trainingCount(name); TextView line = text(name + "  ·  " + n + (n == 1 ? " allenamento" : " allenamenti"), 15, NAVY, true); line.setPadding(0, dp(6), 0, dp(6)); counts.addView(line); }
+        target.addView(counts);
+    }
+
+    private int trainingCount(String name) { int count = 0; for (Session s : sessions) if (splitPeople(s.participants).contains(name)) count++; return count; }
 
     private void showHistory() {
         homeVisible = false;
@@ -275,19 +344,6 @@ public class MainActivity extends Activity {
         marginTop(add, 12);
         content.addView(add);
 
-        if (!sessions.isEmpty()) {
-            content.addView(section("Allenamenti per portiere"));
-            LinearLayout counts = card();
-            Map<String, Integer> totals = new LinkedHashMap<>();
-            for (Session s : sessions) for (String person : splitPeople(s.participants)) totals.put(person, totals.containsKey(person) ? totals.get(person) + 1 : 1);
-            if (totals.isEmpty()) counts.addView(text("Nessun portiere ancora indicato.", 14, MUTED, false));
-            else for (Map.Entry<String, Integer> e : totals.entrySet()) {
-                TextView line = text(e.getKey() + "  ·  " + e.getValue() + (e.getValue() == 1 ? " allenamento" : " allenamenti"), 15, NAVY, true);
-                line.setPadding(0, dp(6), 0, dp(6));
-                counts.addView(line);
-            }
-            content.addView(counts);
-        }
     }
 
     private GridLayout.LayoutParams gridCell() {
@@ -392,15 +448,11 @@ public class MainActivity extends Activity {
         content.addView(season);
 
         content.addView(label("Chi ha fatto l’allenamento"));
-        LinearLayout participantFields = new LinearLayout(this);
-        participantFields.setOrientation(LinearLayout.VERTICAL);
-        List<String> existingPeople = editing ? splitPeople(existing.participants) : new ArrayList<>();
-        if (existingPeople.isEmpty()) addParticipantField(participantFields, ""); else for (String person : existingPeople) addParticipantField(participantFields, person);
+        LinearLayout participantFields = goalkeeperSelector(editing ? existing.participants : "");
         content.addView(participantFields);
-        Button addPerson = smallButton("＋ AGGIUNGI UN ALTRO PORTIERE");
-        addPerson.setOnClickListener(v -> addParticipantField(participantFields, ""));
-        marginTop(addPerson, 7);
-        content.addView(addPerson);
+        Button managePeople = smallButton("GESTISCI LISTA PORTIERI");
+        managePeople.setOnClickListener(v -> showGoalkeepers());
+        marginTop(managePeople, 7); content.addView(managePeople);
 
         content.addView(label("Obiettivo principale"));
         Spinner goal = spinner(GOALS);
@@ -409,7 +461,7 @@ public class MainActivity extends Activity {
 
         content.addView(label("Durata in minuti"));
         EditText minutes = input("Es. 75", InputType.TYPE_CLASS_NUMBER);
-        minutes.setText(editing ? String.valueOf(existing.minutes) : "75");
+        minutes.setText(editing ? String.valueOf(existing.minutes) : "45");
         content.addView(minutes);
 
         content.addView(label("Sequenza degli esercizi"));
@@ -460,8 +512,10 @@ public class MainActivity extends Activity {
                 work.setError("Scrivi cosa si è fatto");
                 return;
             }
+            String selectedPeople = collectSelectedGoalkeepers(participantFields);
+            if (selectedPeople.isEmpty()) { Toast.makeText(this, "Seleziona almeno un portiere", Toast.LENGTH_SHORT).show(); return; }
             if (editing) sessions.remove(existing);
-            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), String.valueOf(season.getSelectedItem()), collectParticipants(participantFields), new ArrayList<>(editorPhotoUris)));
+            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), String.valueOf(season.getSelectedItem()), selectedPeople, new ArrayList<>(editorPhotoUris)));
             save();
             Toast.makeText(this, editing ? "Allenamento aggiornato" : "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -519,14 +573,11 @@ public class MainActivity extends Activity {
         String currentSeason = seasonForDate(today);
         content.addView(inputDisplay(currentSeason));
         content.addView(label("Chi ha fatto l’allenamento"));
-        LinearLayout participantFields = new LinearLayout(this);
-        participantFields.setOrientation(LinearLayout.VERTICAL);
-        addParticipantField(participantFields, "");
+        LinearLayout participantFields = goalkeeperSelector("");
         content.addView(participantFields);
-        Button addPerson = smallButton("＋ AGGIUNGI UN ALTRO PORTIERE");
-        addPerson.setOnClickListener(v -> addParticipantField(participantFields, ""));
-        marginTop(addPerson, 7);
-        content.addView(addPerson);
+        Button managePeople = smallButton("GESTISCI LISTA PORTIERI");
+        managePeople.setOnClickListener(v -> showGoalkeepers());
+        marginTop(managePeople, 7); content.addView(managePeople);
         content.addView(label("Obiettivo"));
         content.addView(inputDisplay(goalValue));
         content.addView(label("Durata"));
@@ -556,7 +607,9 @@ public class MainActivity extends Activity {
         Button save = primary("SALVA ALLENAMENTO");
         marginTop(save, 20);
         save.setOnClickListener(v -> {
-            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), currentSeason, collectParticipants(participantFields), new ArrayList<>(editorPhotoUris)));
+            String selectedPeople = collectSelectedGoalkeepers(participantFields);
+            if (selectedPeople.isEmpty()) { Toast.makeText(this, "Seleziona almeno un portiere", Toast.LENGTH_SHORT).show(); return; }
+            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), currentSeason, selectedPeople, new ArrayList<>(editorPhotoUris)));
             save();
             Toast.makeText(this, "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -631,6 +684,15 @@ public class MainActivity extends Activity {
         } catch (JSONException ignored) {}
     }
 
+    private void loadGoalkeepers() {
+        goalkeepers.clear();
+        try { JSONArray a = new JSONArray(prefs.getString("goalkeepers", "[]")); for (int i = 0; i < a.length(); i++) { String name = a.optString(i).trim(); if (!name.isEmpty() && !goalkeepers.contains(name)) goalkeepers.add(name); } } catch (Exception ignored) {}
+        for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!goalkeepers.contains(name)) goalkeepers.add(name);
+        Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers();
+    }
+
+    private void saveGoalkeepers() { JSONArray a = new JSONArray(); for (String name : goalkeepers) a.put(name); prefs.edit().putString("goalkeepers", a.toString()).apply(); }
+
     private void save() {
         JSONArray a = new JSONArray();
         for (Session s : sessions) {
@@ -674,8 +736,9 @@ public class MainActivity extends Activity {
                 }
                 o.put("backupPhotos", photoNames); data.put(o);
             }
+            JSONObject backup = new JSONObject(); backup.put("version", 2); backup.put("sessions", data); JSONArray roster = new JSONArray(); for (String name : goalkeepers) roster.put(name); backup.put("goalkeepers", roster);
             zip.putNextEntry(new ZipEntry("data.json"));
-            zip.write(data.toString().getBytes("UTF-8"));
+            zip.write(backup.toString().getBytes("UTF-8"));
             zip.closeEntry();
             Toast.makeText(this, "Backup esportato correttamente", Toast.LENGTH_LONG).show();
         } catch (Exception e) { Toast.makeText(this, "Errore durante il backup: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
@@ -701,7 +764,11 @@ public class MainActivity extends Activity {
                 zip.closeEntry();
             }
             if (json == null) throw new Exception("File dati non trovato");
-            JSONArray a = new JSONArray(json); int imported = 0;
+            JSONArray a; JSONArray importedRoster = null;
+            if (json.trim().startsWith("[")) a = new JSONArray(json); else { JSONObject root = new JSONObject(json); a = root.optJSONArray("sessions"); importedRoster = root.optJSONArray("goalkeepers"); }
+            if (a == null) throw new Exception("Elenco allenamenti non trovato");
+            if (importedRoster != null) for (int r = 0; r < importedRoster.length(); r++) { String name = importedRoster.optString(r).trim(); if (!name.isEmpty() && !goalkeepers.contains(name)) goalkeepers.add(name); }
+            int imported = 0;
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i); List<String> photos = new ArrayList<>(); JSONArray names = o.optJSONArray("backupPhotos");
                 if (names != null) for (int p = 0; p < names.length(); p++) { String uri = importedPhotos.get(names.optString(p)); if (uri != null) photos.add(uri); }
@@ -709,6 +776,7 @@ public class MainActivity extends Activity {
                 String date = o.optString("date", iso.format(new Date()));
                 sessions.add(new Session(id, date, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(date)), o.optString("participants"), photos)); imported++;
             }
+            for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!goalkeepers.contains(name)) goalkeepers.add(name); Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers();
             save(); Toast.makeText(this, imported + " allenamenti importati", Toast.LENGTH_LONG).show(); showHome();
         } catch (Exception e) { Toast.makeText(this, "Backup non valido: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
     }
@@ -733,8 +801,9 @@ public class MainActivity extends Activity {
     private List<String> splitPeople(String value) { List<String> result = new ArrayList<>(); if (value == null) return result; for (String raw : value.split("[\\n,;]+")) { String name = raw.trim(); if (!name.isEmpty() && !result.contains(name)) result.add(name); } return result; }
     private String[] people() { List<String> values = new ArrayList<>(); for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!values.contains(name)) values.add(name); Collections.sort(values, String.CASE_INSENSITIVE_ORDER); return values.toArray(new String[0]); }
     private String numberedExercises(String work) { StringBuilder out = new StringBuilder(); int n = 1; for (String raw : work.split("\\n+")) { String line = raw.trim(); if (!line.isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(n++).append(". ").append(line); } } return out.toString(); }
-    private void addParticipantField(LinearLayout container, String value) { LinearLayout line = row(); EditText name = input("Nome del portiere", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS); name.setText(value); line.addView(name, weight()); line.addView(space(6)); Button remove = smallButton("×"); remove.setTextSize(20); remove.setOnClickListener(v -> { if (container.getChildCount() > 1) container.removeView(line); else name.setText(""); }); line.addView(remove, new LinearLayout.LayoutParams(dp(48), dp(48))); marginBottom(line, 6); container.addView(line); }
-    private String collectParticipants(LinearLayout container) { StringBuilder out = new StringBuilder(); for (int i = 0; i < container.getChildCount(); i++) { LinearLayout line = (LinearLayout) container.getChildAt(i); EditText name = (EditText) line.getChildAt(0); String value = name.getText().toString().trim(); if (!value.isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(value); } } return out.toString(); }
+    private LinearLayout goalkeeperSelector(String selectedNames) { LinearLayout box = card(); List<String> selected = splitPeople(selectedNames); if (goalkeepers.isEmpty()) box.addView(text("Prima aggiungi almeno un portiere alla lista.", 14, MUTED, false)); else for (String name : goalkeepers) { CheckBox check = new CheckBox(this); check.setText(name); check.setTextSize(16); check.setTextColor(NAVY); check.setPadding(dp(2), dp(5), dp(2), dp(5)); check.setChecked(selected.contains(name)); box.addView(check); } return box; }
+    private String collectSelectedGoalkeepers(LinearLayout container) { List<String> names = new ArrayList<>(); for (int i = 0; i < container.getChildCount(); i++) if (container.getChildAt(i) instanceof CheckBox) { CheckBox check = (CheckBox) container.getChildAt(i); if (check.isChecked()) names.add(check.getText().toString()); } return joinLines(names); }
+    private String joinLines(List<String> names) { StringBuilder out = new StringBuilder(); for (String name : names) { if (out.length() > 0) out.append("\n"); out.append(name); } return out.toString(); }
 
     private void showDiagram(String description) {
         ExerciseDiagramView diagram = new ExerciseDiagramView(this, description);

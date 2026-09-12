@@ -14,6 +14,10 @@ App Android offline per registrare le giornate di allenamento dei portieri e pre
 - foto facoltativa associata a ogni allenamento;
 - più foto per lo stesso allenamento;
 - portieri presenti, con conteggio delle sedute per ciascun nome;
+- gestione centralizzata della lista portieri con aggiunta, modifica ed eliminazione;
+- selezione multipla dei portieri presenti durante l’inserimento;
+- contatori individuali direttamente nella pagina principale;
+- durata predefinita dei nuovi allenamenti impostata a 45 minuti;
 - divisione per stagione sportiva;
 - filtri per tipologia, stagione, portiere e giornata;
 - esercizi numerati e separati, uno per riga;
