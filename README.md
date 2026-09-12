@@ -12,6 +12,13 @@ App Android offline per registrare le giornate di allenamento dei portieri e pre
 - calendario mensile con un pallino sui giorni di allenamento;
 - filtro dello storico toccando una giornata del calendario;
 - foto facoltativa associata a ogni allenamento;
+- più foto per lo stesso allenamento;
+- portieri presenti, con conteggio delle sedute per ciascun nome;
+- divisione per stagione sportiva;
+- filtri per tipologia, stagione, portiere e giornata;
+- esercizi numerati e separati, uno per riga;
+- schema grafico automatico indicativo ricavato dalla descrizione;
+- esportazione e importazione di un backup completo, fotografie comprese;
 - salvataggio locale sul telefono, senza account e senza Internet.
 
 La compilazione APK parte automaticamente con GitHub Actions a ogni caricamento su `main`.

@@ -7,6 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -23,6 +26,7 @@ import android.widget.FrameLayout;
 import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -34,6 +38,11 @@ import org.json.JSONObject;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -41,14 +50,22 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 public class MainActivity extends Activity {
     private static final int NAVY = Color.rgb(16, 42, 67);
     private static final int GREEN = Color.rgb(18, 184, 134);
     private static final int PAGE = Color.rgb(242, 246, 248);
     private static final int MUTED = Color.rgb(91, 110, 127);
-    private static final String[] GOALS = {"Tecnica di base", "Presa e tuffo", "Reattività", "Uscite alte", "Uno contro uno", "Gioco con i piedi", "Forza e mobilità", "Seduta completa"};
+    private static final String[] GOALS = {"Reattività", "Uscite alte", "Uno contro uno", "Gioco con i piedi", "Forza e mobilità", "Altro"};
     private static final int PICK_PHOTO = 40;
+    private static final int EXPORT_BACKUP = 41;
+    private static final int IMPORT_BACKUP = 42;
     private final SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ITALY);
     private final SimpleDateFormat pretty = new SimpleDateFormat("EEEE d MMMM yyyy", Locale.ITALY);
     private final List<Session> sessions = new ArrayList<>();
@@ -57,8 +74,11 @@ public class MainActivity extends Activity {
     private boolean homeVisible;
     private Calendar historyMonth = Calendar.getInstance();
     private String selectedHistoryDate;
-    private String editorPhotoUri = "";
-    private ImageView editorPhotoPreview;
+    private final List<String> editorPhotoUris = new ArrayList<>();
+    private LinearLayout editorPhotoStrip;
+    private String historyGoalFilter = "Tutte le tipologie";
+    private String historySeasonFilter = "Tutte le stagioni";
+    private String historyPersonFilter = "Tutti i portieri";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -128,6 +148,17 @@ public class MainActivity extends Activity {
         Button ideas = secondary("⚽  SUGGERISCI ALLENAMENTO");
         ideas.setOnClickListener(v -> showPlanner());
         content.addView(ideas);
+
+        content.addView(section("Backup e trasferimento"));
+        LinearLayout backupActions = row();
+        Button export = secondary("ESPORTA BACKUP");
+        export.setOnClickListener(v -> exportBackup());
+        backupActions.addView(export, weight());
+        backupActions.addView(space(8));
+        Button importButton = secondary("IMPORTA BACKUP");
+        importButton.setOnClickListener(v -> importBackup());
+        backupActions.addView(importButton, weight());
+        content.addView(backupActions);
     }
 
     private void showHistory() {
@@ -146,6 +177,35 @@ public class MainActivity extends Activity {
 
     private void renderCalendar() {
         content.removeViews(1, content.getChildCount() - 1);
+        LinearLayout filters = card();
+        filters.addView(text("Filtra gli allenamenti", 17, NAVY, true));
+        filters.addView(label("Tipologia"));
+        String[] goalFilters = withFirst("Tutte le tipologie", GOALS);
+        Spinner goalFilter = spinner(goalFilters);
+        goalFilter.setSelection(indexOf(goalFilters, historyGoalFilter));
+        filters.addView(goalFilter);
+        filters.addView(label("Stagione"));
+        String[] seasonFilters = withFirst("Tutte le stagioni", seasons());
+        Spinner seasonFilter = spinner(seasonFilters);
+        seasonFilter.setSelection(indexOf(seasonFilters, historySeasonFilter));
+        filters.addView(seasonFilter);
+        filters.addView(label("Portiere"));
+        String[] personFilters = withFirst("Tutti i portieri", people());
+        Spinner personFilter = spinner(personFilters);
+        personFilter.setSelection(indexOf(personFilters, historyPersonFilter));
+        filters.addView(personFilter);
+        Button apply = secondary("APPLICA FILTRI");
+        marginTop(apply, 10);
+        apply.setOnClickListener(v -> {
+            historyGoalFilter = String.valueOf(goalFilter.getSelectedItem());
+            historySeasonFilter = String.valueOf(seasonFilter.getSelectedItem());
+            historyPersonFilter = String.valueOf(personFilter.getSelectedItem());
+            selectedHistoryDate = null;
+            renderCalendar();
+        });
+        filters.addView(apply);
+        content.addView(filters);
+
         LinearLayout calendarCard = card();
         LinearLayout monthBar = row();
         Button previous = smallButton("‹");
@@ -202,7 +262,7 @@ public class MainActivity extends Activity {
         if (selectedHistoryDate != null) {
             content.addView(section(formatDate(selectedHistoryDate)));
             boolean found = false;
-            for (Session s : sorted()) if (s.date.equals(selectedHistoryDate)) { content.addView(sessionCard(s)); found = true; }
+            for (Session s : sorted()) if (s.date.equals(selectedHistoryDate) && matchesFilters(s)) { content.addView(sessionCard(s)); found = true; }
             if (!found) content.addView(empty("Nessun allenamento in questa giornata."));
         } else {
             TextView hint = text("Tocca un giorno per vedere o aggiungere un allenamento.", 14, MUTED, false);
@@ -214,6 +274,20 @@ public class MainActivity extends Activity {
         add.setOnClickListener(v -> showEditor(null));
         marginTop(add, 12);
         content.addView(add);
+
+        if (!sessions.isEmpty()) {
+            content.addView(section("Allenamenti per portiere"));
+            LinearLayout counts = card();
+            Map<String, Integer> totals = new LinkedHashMap<>();
+            for (Session s : sessions) for (String person : splitPeople(s.participants)) totals.put(person, totals.containsKey(person) ? totals.get(person) + 1 : 1);
+            if (totals.isEmpty()) counts.addView(text("Nessun portiere ancora indicato.", 14, MUTED, false));
+            else for (Map.Entry<String, Integer> e : totals.entrySet()) {
+                TextView line = text(e.getKey() + "  ·  " + e.getValue() + (e.getValue() == 1 ? " allenamento" : " allenamenti"), 15, NAVY, true);
+                line.setPadding(0, dp(6), 0, dp(6));
+                counts.addView(line);
+            }
+            content.addView(counts);
+        }
     }
 
     private GridLayout.LayoutParams gridCell() {
@@ -226,8 +300,15 @@ public class MainActivity extends Activity {
     }
 
     private boolean hasTraining(String date) {
-        for (Session s : sessions) if (s.date.equals(date)) return true;
+        for (Session s : sessions) if (s.date.equals(date) && matchesFilters(s)) return true;
         return false;
+    }
+
+    private boolean matchesFilters(Session s) {
+        if (!historyGoalFilter.equals("Tutte le tipologie") && !historyGoalFilter.equals(s.goal)) return false;
+        if (!historySeasonFilter.equals("Tutte le stagioni") && !historySeasonFilter.equals(s.season)) return false;
+        if (!historyPersonFilter.equals("Tutti i portieri") && !splitPeople(s.participants).contains(historyPersonFilter)) return false;
+        return true;
     }
 
     private View sessionCard(Session s) {
@@ -243,22 +324,29 @@ public class MainActivity extends Activity {
         badgeRow.addView(duration, dp);
         marginTop(badgeRow, 9);
         card.addView(badgeRow);
+        TextView season = text("Stagione " + s.season, 13, MUTED, true);
+        season.setPadding(0, dp(8), 0, 0);
+        card.addView(season);
+        if (!s.participants.trim().isEmpty()) {
+            TextView people = text("Portieri: " + s.participants.replace("\n", ", "), 14, NAVY, true);
+            people.setPadding(0, dp(6), 0, 0);
+            card.addView(people);
+        }
         if (!s.work.trim().isEmpty()) {
-            TextView work = text(s.work, 15, Color.rgb(35, 55, 70), false);
+            TextView work = text(numberedExercises(s.work), 15, Color.rgb(35, 55, 70), false);
             work.setPadding(0, dp(11), 0, 0);
-            work.setMaxLines(4);
             card.addView(work);
+            Button diagram = smallButton("VEDI SCHEMA ESERCIZI");
+            diagram.setOnClickListener(v -> showDiagram(s.work));
+            marginTop(diagram, 10);
+            card.addView(diagram);
         }
         if (!s.notes.trim().isEmpty()) {
             TextView notes = text("Note: " + s.notes, 14, MUTED, false);
             notes.setPadding(0, dp(8), 0, 0);
             card.addView(notes);
         }
-        if (!s.photoUri.isEmpty()) {
-            ImageView photo = trainingPhoto(s.photoUri, 150);
-            marginTop(photo, 11);
-            card.addView(photo);
-        }
+        if (!s.photoUris.isEmpty()) card.addView(photoGallery(s.photoUris, 130));
         LinearLayout actions = row();
         Button edit = smallButton("MODIFICA");
         edit.setOnClickListener(v -> showEditor(s));
@@ -297,6 +385,23 @@ public class MainActivity extends Activity {
         }, selected.get(Calendar.YEAR), selected.get(Calendar.MONTH), selected.get(Calendar.DAY_OF_MONTH)).show());
         content.addView(date);
 
+        content.addView(label("Stagione"));
+        String[] seasonValues = seasonsAround(dateValue[0]);
+        Spinner season = spinner(seasonValues);
+        season.setSelection(indexOf(seasonValues, editing ? existing.season : seasonForDate(dateValue[0])));
+        content.addView(season);
+
+        content.addView(label("Chi ha fatto l’allenamento"));
+        LinearLayout participantFields = new LinearLayout(this);
+        participantFields.setOrientation(LinearLayout.VERTICAL);
+        List<String> existingPeople = editing ? splitPeople(existing.participants) : new ArrayList<>();
+        if (existingPeople.isEmpty()) addParticipantField(participantFields, ""); else for (String person : existingPeople) addParticipantField(participantFields, person);
+        content.addView(participantFields);
+        Button addPerson = smallButton("＋ AGGIUNGI UN ALTRO PORTIERE");
+        addPerson.setOnClickListener(v -> addParticipantField(participantFields, ""));
+        marginTop(addPerson, 7);
+        content.addView(addPerson);
+
         content.addView(label("Obiettivo principale"));
         Spinner goal = spinner(GOALS);
         if (editing) goal.setSelection(indexOf(GOALS, existing.goal));
@@ -307,9 +412,9 @@ public class MainActivity extends Activity {
         minutes.setText(editing ? String.valueOf(existing.minutes) : "75");
         content.addView(minutes);
 
-        content.addView(label("Cosa si è fatto"));
-        EditText work = input("Es. riscaldamento, prese basse, tuffi, uscite alte…", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        work.setMinLines(5);
+        content.addView(label("Sequenza degli esercizi"));
+        EditText work = input("Scrivi un esercizio per riga\nEs. Riscaldamento con palla\nTuffi sui due lati\nUscite su cross", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        work.setMinLines(7);
         work.setGravity(Gravity.TOP);
         if (editing) work.setText(existing.work);
         content.addView(work);
@@ -321,18 +426,22 @@ public class MainActivity extends Activity {
         if (editing) notes.setText(existing.notes);
         content.addView(notes);
 
-        content.addView(label("Foto dell’allenamento (facoltativa)"));
-        editorPhotoUri = editing ? existing.photoUri : "";
-        editorPhotoPreview = trainingPhoto(editorPhotoUri, 190);
-        editorPhotoPreview.setVisibility(editorPhotoUri.isEmpty() ? View.GONE : View.VISIBLE);
-        content.addView(editorPhotoPreview);
+        content.addView(label("Foto dell’allenamento (puoi sceglierne più di una)"));
+        editorPhotoUris.clear();
+        if (editing) editorPhotoUris.addAll(existing.photoUris);
+        editorPhotoStrip = new LinearLayout(this);
+        editorPhotoStrip.setOrientation(LinearLayout.HORIZONTAL);
+        renderEditorPhotos();
+        HorizontalScrollView photoScroll = new HorizontalScrollView(this);
+        photoScroll.addView(editorPhotoStrip);
+        content.addView(photoScroll, new LinearLayout.LayoutParams(-1, dp(130)));
         LinearLayout photoActions = row();
-        Button choosePhoto = secondary(editorPhotoUri.isEmpty() ? "AGGIUNGI FOTO" : "CAMBIA FOTO");
+        Button choosePhoto = secondary("AGGIUNGI FOTO");
         choosePhoto.setOnClickListener(v -> pickPhoto());
         photoActions.addView(choosePhoto, weight());
         photoActions.addView(space(8));
         Button removePhoto = secondary("RIMUOVI");
-        removePhoto.setOnClickListener(v -> { editorPhotoUri = ""; editorPhotoPreview.setImageDrawable(null); editorPhotoPreview.setVisibility(View.GONE); });
+        removePhoto.setOnClickListener(v -> { editorPhotoUris.clear(); renderEditorPhotos(); });
         photoActions.addView(removePhoto, weight());
         marginTop(photoActions, 7);
         content.addView(photoActions);
@@ -352,7 +461,7 @@ public class MainActivity extends Activity {
                 return;
             }
             if (editing) sessions.remove(existing);
-            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), editorPhotoUri));
+            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), String.valueOf(season.getSelectedItem()), collectParticipants(participantFields), new ArrayList<>(editorPhotoUris)));
             save();
             Toast.makeText(this, editing ? "Allenamento aggiornato" : "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -406,6 +515,18 @@ public class MainActivity extends Activity {
         content.addView(label("Data"));
         TextView date = inputDisplay(formatDate(today));
         content.addView(date);
+        content.addView(label("Stagione"));
+        String currentSeason = seasonForDate(today);
+        content.addView(inputDisplay(currentSeason));
+        content.addView(label("Chi ha fatto l’allenamento"));
+        LinearLayout participantFields = new LinearLayout(this);
+        participantFields.setOrientation(LinearLayout.VERTICAL);
+        addParticipantField(participantFields, "");
+        content.addView(participantFields);
+        Button addPerson = smallButton("＋ AGGIUNGI UN ALTRO PORTIERE");
+        addPerson.setOnClickListener(v -> addParticipantField(participantFields, ""));
+        marginTop(addPerson, 7);
+        content.addView(addPerson);
         content.addView(label("Obiettivo"));
         content.addView(inputDisplay(goalValue));
         content.addView(label("Durata"));
@@ -421,18 +542,21 @@ public class MainActivity extends Activity {
         notes.setMinLines(3);
         notes.setGravity(Gravity.TOP);
         content.addView(notes);
-        content.addView(label("Foto dell’allenamento (facoltativa)"));
-        editorPhotoUri = "";
-        editorPhotoPreview = trainingPhoto("", 190);
-        editorPhotoPreview.setVisibility(View.GONE);
-        content.addView(editorPhotoPreview);
+        content.addView(label("Foto dell’allenamento (puoi sceglierne più di una)"));
+        editorPhotoUris.clear();
+        editorPhotoStrip = new LinearLayout(this);
+        editorPhotoStrip.setOrientation(LinearLayout.HORIZONTAL);
+        renderEditorPhotos();
+        HorizontalScrollView photoScroll = new HorizontalScrollView(this);
+        photoScroll.addView(editorPhotoStrip);
+        content.addView(photoScroll, new LinearLayout.LayoutParams(-1, dp(130)));
         Button choosePhoto = secondary("AGGIUNGI FOTO");
         choosePhoto.setOnClickListener(v -> pickPhoto());
         content.addView(choosePhoto);
         Button save = primary("SALVA ALLENAMENTO");
         marginTop(save, 20);
         save.setOnClickListener(v -> {
-            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), editorPhotoUri));
+            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), currentSeason, collectParticipants(participantFields), new ArrayList<>(editorPhotoUris)));
             save();
             Toast.makeText(this, "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -497,7 +621,12 @@ public class MainActivity extends Activity {
             JSONArray a = new JSONArray(prefs.getString("sessions", "[]"));
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i);
-                sessions.add(new Session(o.optLong("id", i), o.optString("date"), o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("photoUri")));
+                List<String> photos = new ArrayList<>();
+                JSONArray savedPhotos = o.optJSONArray("photoUris");
+                if (savedPhotos != null) for (int p = 0; p < savedPhotos.length(); p++) if (!savedPhotos.optString(p).isEmpty()) photos.add(savedPhotos.optString(p));
+                else if (!o.optString("photoUri").isEmpty()) photos.add(o.optString("photoUri"));
+                String savedDate = o.optString("date");
+                sessions.add(new Session(o.optLong("id", i), savedDate, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(savedDate)), o.optString("participants"), photos));
             }
         } catch (JSONException ignored) {}
     }
@@ -506,11 +635,87 @@ public class MainActivity extends Activity {
         JSONArray a = new JSONArray();
         for (Session s : sessions) {
             JSONObject o = new JSONObject();
-            try { o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("photoUri", s.photoUri); a.put(o); }
+            try {
+                o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("season", s.season); o.put("participants", s.participants);
+                JSONArray photos = new JSONArray(); for (String uri : s.photoUris) photos.put(uri); o.put("photoUris", photos); a.put(o);
+            }
             catch (JSONException ignored) {}
         }
         prefs.edit().putString("sessions", a.toString()).apply();
     }
+
+    private void exportBackup() {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/zip");
+        intent.putExtra(Intent.EXTRA_TITLE, "allenamento_portieri_backup_" + iso.format(new Date()) + ".apbackup");
+        startActivityForResult(intent, EXPORT_BACKUP);
+    }
+
+    private void importBackup() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, IMPORT_BACKUP);
+    }
+
+    private void writeBackup(Uri destination) {
+        try (OutputStream raw = getContentResolver().openOutputStream(destination); ZipOutputStream zip = new ZipOutputStream(raw)) {
+            JSONArray data = new JSONArray();
+            for (Session s : sessions) {
+                JSONObject o = sessionJson(s);
+                JSONArray photoNames = new JSONArray();
+                for (int i = 0; i < s.photoUris.size(); i++) {
+                    String name = "photos/" + s.id + "_" + i + ".img";
+                    try (InputStream in = getContentResolver().openInputStream(Uri.parse(s.photoUris.get(i)))) {
+                        if (in == null) continue;
+                        zip.putNextEntry(new ZipEntry(name)); copy(in, zip); zip.closeEntry(); photoNames.put(name);
+                    } catch (Exception ignored) {}
+                }
+                o.put("backupPhotos", photoNames); data.put(o);
+            }
+            zip.putNextEntry(new ZipEntry("data.json"));
+            zip.write(data.toString().getBytes("UTF-8"));
+            zip.closeEntry();
+            Toast.makeText(this, "Backup esportato correttamente", Toast.LENGTH_LONG).show();
+        } catch (Exception e) { Toast.makeText(this, "Errore durante il backup: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+    }
+
+    private void readBackup(Uri source) {
+        File photoDir = new File(getFilesDir(), "backup_photos");
+        if (!photoDir.exists()) photoDir.mkdirs();
+        String json = null;
+        Map<String, String> importedPhotos = new HashMap<>();
+        try (InputStream raw = getContentResolver().openInputStream(source); ZipInputStream zip = new ZipInputStream(raw)) {
+            ZipEntry entry;
+            byte[] buffer = new byte[16384];
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.getName().equals("data.json")) {
+                    ByteArrayOutputStream out = new ByteArrayOutputStream(); copy(zip, out); json = out.toString("UTF-8");
+                } else if (entry.getName().startsWith("photos/") && !entry.isDirectory()) {
+                    String safeName = new File(entry.getName()).getName();
+                    File target = new File(photoDir, System.currentTimeMillis() + "_" + safeName);
+                    try (FileOutputStream out = new FileOutputStream(target)) { int n; while ((n = zip.read(buffer)) > 0) out.write(buffer, 0, n); }
+                    importedPhotos.put(entry.getName(), Uri.fromFile(target).toString());
+                }
+                zip.closeEntry();
+            }
+            if (json == null) throw new Exception("File dati non trovato");
+            JSONArray a = new JSONArray(json); int imported = 0;
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i); List<String> photos = new ArrayList<>(); JSONArray names = o.optJSONArray("backupPhotos");
+                if (names != null) for (int p = 0; p < names.length(); p++) { String uri = importedPhotos.get(names.optString(p)); if (uri != null) photos.add(uri); }
+                long id = o.optLong("id", System.currentTimeMillis() + i); removeSessionById(id);
+                String date = o.optString("date", iso.format(new Date()));
+                sessions.add(new Session(id, date, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(date)), o.optString("participants"), photos)); imported++;
+            }
+            save(); Toast.makeText(this, imported + " allenamenti importati", Toast.LENGTH_LONG).show(); showHome();
+        } catch (Exception e) { Toast.makeText(this, "Backup non valido: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+    }
+
+    private JSONObject sessionJson(Session s) throws JSONException { JSONObject o = new JSONObject(); o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("season", s.season); o.put("participants", s.participants); return o; }
+    private void removeSessionById(long id) { for (int i = sessions.size() - 1; i >= 0; i--) if (sessions.get(i).id == id) sessions.remove(i); }
+    private void copy(InputStream in, OutputStream out) throws Exception { byte[] buffer = new byte[16384]; int n; while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n); }
 
     private List<Session> sorted() {
         List<Session> result = new ArrayList<>(sessions);
@@ -521,6 +726,22 @@ public class MainActivity extends Activity {
     private String formatDate(String value) { try { return capitalize(pretty.format(iso.parse(value))); } catch (ParseException e) { return value; } }
     private String capitalize(String s) { return s == null || s.isEmpty() ? s : s.substring(0, 1).toUpperCase(Locale.ITALY) + s.substring(1); }
     private int indexOf(String[] items, String value) { for (int i = 0; i < items.length; i++) if (items[i].equals(value)) return i; return 0; }
+    private String[] withFirst(String first, String[] values) { String[] result = new String[values.length + 1]; result[0] = first; System.arraycopy(values, 0, result, 1, values.length); return result; }
+    private String seasonForDate(String date) { try { Calendar c = Calendar.getInstance(); c.setTime(iso.parse(date)); int y = c.get(Calendar.YEAR); if (c.get(Calendar.MONTH) < Calendar.JULY) y--; return y + "/" + String.valueOf(y + 1).substring(2); } catch (Exception e) { return "2026/27"; } }
+    private String[] seasonsAround(String date) { String center = seasonForDate(date); int y; try { y = Integer.parseInt(center.substring(0, 4)); } catch (Exception e) { y = Calendar.getInstance().get(Calendar.YEAR); } return new String[]{(y - 1) + "/" + String.valueOf(y).substring(2), center, (y + 1) + "/" + String.valueOf(y + 2).substring(2)}; }
+    private String[] seasons() { List<String> values = new ArrayList<>(); for (Session s : sessions) if (!s.season.isEmpty() && !values.contains(s.season)) values.add(s.season); Collections.sort(values, Collections.reverseOrder()); if (values.isEmpty()) values.add(seasonForDate(iso.format(new Date()))); return values.toArray(new String[0]); }
+    private List<String> splitPeople(String value) { List<String> result = new ArrayList<>(); if (value == null) return result; for (String raw : value.split("[\\n,;]+")) { String name = raw.trim(); if (!name.isEmpty() && !result.contains(name)) result.add(name); } return result; }
+    private String[] people() { List<String> values = new ArrayList<>(); for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!values.contains(name)) values.add(name); Collections.sort(values, String.CASE_INSENSITIVE_ORDER); return values.toArray(new String[0]); }
+    private String numberedExercises(String work) { StringBuilder out = new StringBuilder(); int n = 1; for (String raw : work.split("\\n+")) { String line = raw.trim(); if (!line.isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(n++).append(". ").append(line); } } return out.toString(); }
+    private void addParticipantField(LinearLayout container, String value) { LinearLayout line = row(); EditText name = input("Nome del portiere", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS); name.setText(value); line.addView(name, weight()); line.addView(space(6)); Button remove = smallButton("×"); remove.setTextSize(20); remove.setOnClickListener(v -> { if (container.getChildCount() > 1) container.removeView(line); else name.setText(""); }); line.addView(remove, new LinearLayout.LayoutParams(dp(48), dp(48))); marginBottom(line, 6); container.addView(line); }
+    private String collectParticipants(LinearLayout container) { StringBuilder out = new StringBuilder(); for (int i = 0; i < container.getChildCount(); i++) { LinearLayout line = (LinearLayout) container.getChildAt(i); EditText name = (EditText) line.getChildAt(0); String value = name.getText().toString().trim(); if (!value.isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(value); } } return out.toString(); }
+
+    private void showDiagram(String description) {
+        ExerciseDiagramView diagram = new ExerciseDiagramView(this, description);
+        int height = dp(390);
+        diagram.setLayoutParams(new LinearLayout.LayoutParams(-1, height));
+        new AlertDialog.Builder(this).setTitle("Schema automatico dell’esercizio").setView(diagram).setMessage("Schema indicativo creato dalle parole della descrizione.").setPositiveButton("Chiudi", null).show();
+    }
 
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(round(Color.WHITE, 14, Color.rgb(222, 230, 235), 1)); marginBottom(v, 12); return v; }
     private LinearLayout row() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
@@ -539,7 +760,9 @@ public class MainActivity extends Activity {
     private Button link(String s) { Button b = button(s); b.setTextColor(NAVY); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackgroundColor(Color.TRANSPARENT); return b; }
     private Button inputButton(String s) { Button b = button(s); b.setTextColor(Color.rgb(35, 55, 70)); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return b; }
     private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(14); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setAllCaps(false); return b; }
-    private ImageView trainingPhoto(String uri, int height) { ImageView v = new ImageView(this); v.setScaleType(ImageView.ScaleType.CENTER_CROP); v.setBackground(round(Color.rgb(225, 233, 238), 12, Color.TRANSPARENT, 0)); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(height))); if (uri != null && !uri.isEmpty()) try { v.setImageURI(Uri.parse(uri)); } catch (Exception ignored) {} return v; }
+    private ImageView trainingPhoto(String uri, int height) { ImageView v = new ImageView(this); v.setScaleType(ImageView.ScaleType.CENTER_CROP); v.setBackground(round(Color.rgb(225, 233, 238), 12, Color.TRANSPARENT, 0)); v.setLayoutParams(new LinearLayout.LayoutParams(dp(180), dp(height))); if (uri != null && !uri.isEmpty()) try { v.setImageURI(Uri.parse(uri)); } catch (Exception ignored) {} return v; }
+    private View photoGallery(List<String> uris, int height) { HorizontalScrollView scroll = new HorizontalScrollView(this); LinearLayout strip = new LinearLayout(this); strip.setOrientation(LinearLayout.HORIZONTAL); strip.setPadding(0, dp(11), 0, 0); for (String uri : uris) { ImageView photo = trainingPhoto(uri, height); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(180), dp(height)); p.setMargins(0, 0, dp(8), 0); strip.addView(photo, p); } scroll.addView(strip); return scroll; }
+    private void renderEditorPhotos() { if (editorPhotoStrip == null) return; editorPhotoStrip.removeAllViews(); if (editorPhotoUris.isEmpty()) { TextView hint = text("Nessuna foto selezionata", 14, MUTED, false); hint.setGravity(Gravity.CENTER_VERTICAL); editorPhotoStrip.addView(hint, new LinearLayout.LayoutParams(dp(240), dp(120))); return; } for (String uri : editorPhotoUris) { ImageView photo = trainingPhoto(uri, 120); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(160), dp(120)); p.setMargins(0, 0, dp(8), 0); editorPhotoStrip.addView(photo, p); } }
     private GradientDrawable round(int fill, int radius, int stroke, int width) { GradientDrawable g = new GradientDrawable(); g.setColor(fill); g.setCornerRadius(dp(radius)); if (width > 0) g.setStroke(dp(width), stroke); return g; }
     private View space(int width) { View v = new View(this); v.setLayoutParams(new LinearLayout.LayoutParams(dp(width), 1)); return v; }
     private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, -2, 1); }
@@ -551,29 +774,55 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("image/*");
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(intent, PICK_PHOTO);
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_PHOTO && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            Uri uri = data.getData();
-            try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
-            editorPhotoUri = uri.toString();
-            if (editorPhotoPreview != null) {
-                editorPhotoPreview.setImageURI(uri);
-                editorPhotoPreview.setVisibility(View.VISIBLE);
-            }
+        if (resultCode == RESULT_OK && data != null && data.getData() != null && requestCode == EXPORT_BACKUP) { writeBackup(data.getData()); return; }
+        if (resultCode == RESULT_OK && data != null && data.getData() != null && requestCode == IMPORT_BACKUP) { readBackup(data.getData()); return; }
+        if (requestCode == PICK_PHOTO && resultCode == RESULT_OK && data != null) {
+            if (data.getClipData() != null) {
+                for (int i = 0; i < data.getClipData().getItemCount(); i++) addPhotoUri(data.getClipData().getItemAt(i).getUri());
+            } else if (data.getData() != null) addPhotoUri(data.getData());
+            renderEditorPhotos();
         }
     }
+
+    private void addPhotoUri(Uri uri) { try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {} if (!editorPhotoUris.contains(uri.toString())) editorPhotoUris.add(uri.toString()); }
 
     @Override public void onBackPressed() {
         if (homeVisible) super.onBackPressed(); else showHome();
     }
 
+    static class ExerciseDiagramView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final String description;
+        ExerciseDiagramView(Context context, String description) { super(context); this.description = description == null ? "" : description.toLowerCase(Locale.ITALY); setBackgroundColor(Color.rgb(239, 247, 241)); }
+        @Override protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            float w = getWidth(), h = getHeight(), pad = w * .07f;
+            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(54, 145, 83)); c.drawRoundRect(pad, pad, w - pad, h - pad, 18, 18, paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(4); paint.setColor(Color.WHITE);
+            c.drawRoundRect(pad, pad, w - pad, h - pad, 18, 18, paint);
+            c.drawLine(pad, h / 2, w - pad, h / 2, paint); c.drawCircle(w / 2, h / 2, w * .12f, paint);
+            c.drawRect(w * .29f, pad, w * .71f, h * .25f, paint); c.drawRect(w * .29f, h * .75f, w * .71f, h - pad, paint);
+            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(255, 213, 79));
+            float keeperX = w / 2, keeperY = h * .79f; c.drawCircle(keeperX, keeperY, 16, paint);
+            paint.setColor(Color.rgb(29, 74, 122));
+            int players = description.contains("uno contro uno") ? 1 : description.contains("cross") || description.contains("uscit") ? 3 : 2;
+            for (int i = 0; i < players; i++) { float x = w * (.32f + i * .18f); float y = h * (.30f + (i % 2) * .12f); c.drawCircle(x, y, 14, paint); drawArrow(c, x, y + 18, keeperX + (i - 1) * 35, keeperY - 24); }
+            if (description.contains("lateral") || description.contains("tuff")) { paint.setColor(Color.rgb(255, 213, 79)); c.drawCircle(w * .32f, h * .80f, 12, paint); c.drawCircle(w * .68f, h * .80f, 12, paint); }
+            if (description.contains("cono") || description.contains("slalom") || description.contains("appoggi")) { paint.setColor(Color.rgb(255, 132, 38)); for (int i = 0; i < 4; i++) c.drawCircle(w * (.32f + i * .12f), h * .58f, 8, paint); }
+            paint.setColor(Color.WHITE); paint.setTextSize(28); paint.setTypeface(Typeface.DEFAULT_BOLD); c.drawText("SCHEMA INDICATIVO", pad + 14, h - pad - 14, paint);
+        }
+        private void drawArrow(Canvas c, float x1, float y1, float x2, float y2) { paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(5); paint.setColor(Color.WHITE); c.drawLine(x1, y1, x2, y2, paint); double a = Math.atan2(y2-y1, x2-x1); Path p = new Path(); p.moveTo(x2,y2); p.lineTo((float)(x2-22*Math.cos(a-.5)),(float)(y2-22*Math.sin(a-.5))); p.moveTo(x2,y2); p.lineTo((float)(x2-22*Math.cos(a+.5)),(float)(y2-22*Math.sin(a+.5))); c.drawPath(p, paint); paint.setStyle(Paint.Style.FILL); }
+    }
+
     static class Session {
-        final long id; final String date, goal, work, notes, photoUri; final int minutes;
-        Session(long id, String date, String goal, int minutes, String work, String notes, String photoUri) { this.id = id; this.date = date; this.goal = goal; this.minutes = minutes; this.work = work; this.notes = notes; this.photoUri = photoUri == null ? "" : photoUri; }
+        final long id; final String date, goal, work, notes, season, participants; final int minutes; final List<String> photoUris;
+        Session(long id, String date, String goal, int minutes, String work, String notes, String season, String participants, List<String> photoUris) { this.id = id; this.date = date; this.goal = goal; this.minutes = minutes; this.work = work; this.notes = notes; this.season = season; this.participants = participants == null ? "" : participants; this.photoUris = photoUris == null ? new ArrayList<>() : photoUris; }
     }
 }
