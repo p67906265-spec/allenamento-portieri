@@ -187,27 +187,18 @@ public class MainActivity extends Activity {
         stats.addView(stat("MINUTI TOTALI", String.valueOf(totalMinutes())), weight());
         content.addView(stats);
 
-        content.addView(section("Allenamenti per portiere"));
-        addGoalkeeperCounts(content);
-        Button manageGoalkeepers = secondary("GESTIONE PORTIERI");
-        manageGoalkeepers.setOnClickListener(v -> showGoalkeepers());
-        content.addView(manageGoalkeepers);
-
         Button add = primary("＋  REGISTRA ALLENAMENTO");
         add.setOnClickListener(v -> showEditor(null));
         marginTop(add, 18);
         content.addView(add);
 
-        TextView recent = section("Ultime giornate");
+        TextView recent = section("Ultimo allenamento");
         content.addView(recent);
         if (sessions.isEmpty()) {
             content.addView(empty("Non hai ancora registrato allenamenti.\nPremi il pulsante verde per iniziare."));
         } else {
             List<Session> sorted = sorted();
-            for (int i = 0; i < Math.min(3, sorted.size()); i++) content.addView(sessionCard(sorted.get(i)));
-            Button all = secondary("VEDI TUTTO LO STORICO");
-            all.setOnClickListener(v -> showHistory());
-            content.addView(all);
+            content.addView(sessionCard(sorted.get(0)));
         }
 
         TextView plan = section("Prepara la prossima seduta");
@@ -219,16 +210,6 @@ public class MainActivity extends Activity {
         ideas.setOnClickListener(v -> showPlanner());
         content.addView(ideas);
 
-        content.addView(section("Backup e trasferimento"));
-        LinearLayout backupActions = row();
-        Button export = secondary("ESPORTA BACKUP");
-        export.setOnClickListener(v -> exportBackup());
-        backupActions.addView(export, weight());
-        backupActions.addView(space(8));
-        Button importButton = secondary("IMPORTA BACKUP");
-        importButton.setOnClickListener(v -> importBackup());
-        backupActions.addView(importButton, weight());
-        content.addView(backupActions);
     }
 
     private void showGoalkeepers() {
