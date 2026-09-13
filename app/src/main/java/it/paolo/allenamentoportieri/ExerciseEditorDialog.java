@@ -1,5 +1,7 @@
 package it.paolo.allenamentoportieri;
 
+import android.animation.Animator;
+import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.app.Dialog;
 import android.content.Context;
@@ -28,6 +30,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
@@ -137,6 +140,8 @@ public class ExerciseEditorDialog extends Dialog {
         addCommand(commands, "Annulla", v -> { board.state.undo(); board.invalidate(); });
         addCommand(commands, "Elimina", v -> { board.deleteSelected(); });
         addCommand(commands, "Ruota 90°", v -> { board.rotateSelected(); });
+        addCommand(commands, "Ordine −", v -> { board.changeSelectedOrder(-1); });
+        addCommand(commands, "Ordine +", v -> { board.changeSelectedOrder(1); });
         addCommand(commands, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
         addCommand(commands, "Ricrea automazione", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
         commandsScroll.addView(commands);
@@ -238,10 +243,11 @@ public class ExerciseEditorDialog extends Dialog {
         String type;
         float x, y, x2, y2;
         int rotation;
+        int order;
         DiagramItem(String type, float x, float y) { this.type = type; this.x = x; this.y = y; this.x2 = x; this.y2 = y; }
         DiagramItem(String type, float x, float y, float x2, float y2) { this.type = type; this.x = x; this.y = y; this.x2 = x2; this.y2 = y2; }
-        JSONObject json() throws Exception { JSONObject o = new JSONObject(); o.put("type", type); o.put("x", x); o.put("y", y); o.put("x2", x2); o.put("y2", y2); o.put("rotation", rotation); return o; }
-        static DiagramItem from(JSONObject o) { DiagramItem item = new DiagramItem(o.optString("type"), (float)o.optDouble("x", .5), (float)o.optDouble("y", .5), (float)o.optDouble("x2", .5), (float)o.optDouble("y2", .5)); item.rotation = o.optInt("rotation", 0); return item; }
+        JSONObject json() throws Exception { JSONObject o = new JSONObject(); o.put("type", type); o.put("x", x); o.put("y", y); o.put("x2", x2); o.put("y2", y2); o.put("rotation", rotation); o.put("order", order); return o; }
+        static DiagramItem from(JSONObject o) { DiagramItem item = new DiagramItem(o.optString("type"), (float)o.optDouble("x", .5), (float)o.optDouble("y", .5), (float)o.optDouble("x2", .5), (float)o.optDouble("y2", .5)); item.rotation = o.optInt("rotation", 0); item.order = o.optInt("order", 0); return item; }
     }
 
     private static class DiagramState {
@@ -261,33 +267,37 @@ public class ExerciseEditorDialog extends Dialog {
             s.items.add(new DiagramItem("keeper", startX, startY));
 
             boolean mentionsPost = d.contains("palo");
-            boolean opposite = d.contains("contrario") || d.contains("opposto") || d.contains("altro palo");
             boolean hasCoach = d.contains("mister") || d.contains("allenator") || d.contains("preparator");
             boolean hasPlayer = d.contains("compagno") || d.contains("attaccant") || d.contains("giocator");
             boolean hasLadder = d.contains("scaletta") || d.contains("ladder");
 
             if (mentionsPost) {
-                float firstX;
-                if (d.contains("palo destro")) firstX = .74f;
-                else if (d.contains("palo sinistro")) firstX = .26f;
-                else firstX = .26f;
-                float targetY = .79f;
-                s.items.add(new DiagramItem("move", startX, startY, firstX, targetY));
-                s.items.add(new DiagramItem("step1", (startX + firstX) / 2f, .72f));
-                if (d.contains("presa") || d.contains("palla")) s.items.add(new DiagramItem("ball", firstX, targetY));
-
-                float lastX = firstX;
-                if (opposite) {
-                    float secondX = firstX < .5f ? .74f : .26f;
-                    s.items.add(new DiagramItem("move", firstX, targetY, secondX, targetY));
-                    s.items.add(new DiagramItem("step2", .50f, .68f));
-                    lastX = secondX;
+                float lastX = startX, lastY = startY;
+                int created = 0;
+                String[] phases = d.split("(?:\\bpoi\\b|\\bdopodich[eé]\\b|\\bdopo\\b|\\bquindi\\b|\\bsuccessivamente\\b|[,.;]+)");
+                for (String phase : phases) {
+                    if (!(phase.contains("palo") || phase.contains("centro") || phase.contains("destr") || phase.contains("sinistr") || phase.contains("avanti") || phase.contains("indietro"))) continue;
+                    float targetX = lastX, targetY = lastY;
+                    if (phase.contains("contrario") || phase.contains("opposto") || phase.contains("altro palo")) { targetX = lastX < .5f ? .74f : .26f; targetY = .79f; }
+                    else if (phase.contains("palo destro") || phase.contains("verso destra") || phase.contains("a destra")) { targetX = .74f; targetY = .79f; }
+                    else if (phase.contains("palo sinistro") || phase.contains("verso sinistra") || phase.contains("a sinistra")) { targetX = .26f; targetY = .79f; }
+                    else if (phase.contains("palo")) { targetX = lastX == .50f ? .26f : (lastX < .5f ? .74f : .26f); targetY = .79f; }
+                    else if (phase.contains("centro")) { targetX = .50f; targetY = .82f; }
+                    if (phase.contains("avanti")) targetY = .48f;
+                    if (phase.contains("indietro") || phase.contains("arretra") || phase.contains("ritorna")) targetY = .82f;
+                    if (Math.abs(targetX - lastX) > .01f || Math.abs(targetY - lastY) > .01f) {
+                        s.items.add(new DiagramItem("move", lastX, lastY, targetX, targetY));
+                        created++;
+                        if (phase.contains("presa") || phase.contains("palla")) s.items.add(new DiagramItem("ball", targetX, targetY));
+                        lastX = targetX; lastY = targetY;
+                    }
                 }
+                if (created == 0) { lastX = .26f; lastY = .79f; s.items.add(new DiagramItem("move", startX, startY, lastX, lastY)); }
+                if ((d.contains("presa") || d.contains("palla")) && created > 0) s.items.add(new DiagramItem("ball", lastX, lastY));
                 if (hasCoach) {
                     s.items.add(new DiagramItem("coach", .50f, .18f));
                     s.items.add(new DiagramItem("ball", .50f, .25f));
-                    s.items.add(new DiagramItem("shot", .50f, .27f, lastX, .75f));
-                    s.items.add(new DiagramItem(opposite ? "step3" : "step2", .58f, .46f));
+                    s.items.add(new DiagramItem("shot", .50f, .27f, lastX, Math.min(.78f, lastY)));
                 }
                 if (hasPlayer) s.items.add(new DiagramItem("player", .23f, .25f));
                 if (hasLadder) { DiagramItem ladder = new DiagramItem("ladder", .38f, .58f); ladder.rotation = 45; s.items.add(ladder); }
@@ -297,29 +307,24 @@ public class ExerciseEditorDialog extends Dialog {
                 s.items.add(new DiagramItem("ball", sourceX, .25f));
                 s.items.add(new DiagramItem("shot", sourceX, .27f, .50f, .62f));
                 s.items.add(new DiagramItem("move", .50f, .82f, .50f, .62f));
-                s.items.add(new DiagramItem("step1", .43f, .69f));
                 s.items.add(new DiagramItem("dummy", .40f, .60f));
                 s.items.add(new DiagramItem("dummy", .62f, .60f));
             } else if (d.contains("slalom") || d.contains("palett") || d.contains("cono") || d.contains("cinesin")) {
                 for (int i = 0; i < 5; i++) s.items.add(new DiagramItem(d.contains("palett") ? "pole" : "cone", .30f + i * .10f, .55f + (i % 2) * .06f));
                 s.items.add(new DiagramItem("move", .50f, .82f, .50f, .35f));
-                s.items.add(new DiagramItem("step1", .58f, .58f));
             } else if (d.contains("ostacol") || d.contains("balz") || d.contains("forza")) {
                 s.items.add(new DiagramItem("hurdle", .35f, .62f));
                 s.items.add(new DiagramItem("hurdle", .50f, .55f));
                 s.items.add(new DiagramItem("hurdle", .65f, .48f));
                 s.items.add(new DiagramItem("move", .50f, .82f, .70f, .38f));
-                s.items.add(new DiagramItem("step1", .62f, .63f));
             } else if (d.contains("tuff") || d.contains("lateral")) {
                 s.items.add(new DiagramItem("ball", .25f, .76f));
                 s.items.add(new DiagramItem("ball", .75f, .76f));
                 float targetX = d.contains("destr") ? .75f : .25f;
                 s.items.add(new DiagramItem("move", .50f, .82f, targetX, .76f));
-                s.items.add(new DiagramItem("step1", (targetX + .50f) / 2f, .69f));
                 if (d.contains("poi") || d.contains("dopo") || d.contains("second")) {
                     float secondX = targetX < .5f ? .75f : .25f;
                     s.items.add(new DiagramItem("move", targetX, .76f, secondX, .76f));
-                    s.items.add(new DiagramItem("step2", .50f, .65f));
                 }
             } else {
                 if (hasCoach) s.items.add(new DiagramItem("coach", .50f, .18f));
@@ -328,8 +333,10 @@ public class ExerciseEditorDialog extends Dialog {
                     s.items.add(new DiagramItem("ball", .50f, .28f));
                     s.items.add(new DiagramItem("shot", .50f, .30f, .50f, .76f));
                 }
-                if (hasLadder) { s.items.add(new DiagramItem("ladder", .50f, .55f)); s.items.add(new DiagramItem("move", .50f, .82f, .50f, .42f)); s.items.add(new DiagramItem("step1", .58f, .60f)); }
+                if (hasLadder) { s.items.add(new DiagramItem("ladder", .50f, .55f)); s.items.add(new DiagramItem("move", .50f, .82f, .50f, .42f)); }
             }
+            int movementOrder = 1;
+            for (DiagramItem item : s.items) if (item.type.equals("move")) item.order = movementOrder++;
             return s;
         }
     }
@@ -341,40 +348,63 @@ public class ExerciseEditorDialog extends Dialog {
         private DiagramItem selected;
         private float fieldLeft, fieldTop, fieldWidth, fieldHeight;
         private float downX, downY;
-        private ValueAnimator movementAnimator;
+        private AnimatorSet movementAnimator;
         private boolean showingMovement;
         private float animatedKeeperX, animatedKeeperY;
 
         DiagramCanvas(Context context) { super(context); setBackgroundColor(Color.rgb(229, 239, 233)); }
-        void setState(DiagramState state) { stopMovement(); this.state = state; selected = null; tool = null; invalidate(); }
+        void setState(DiagramState state) { stopMovement(); this.state = state; normalizeMovementOrders(); selected = null; tool = null; invalidate(); }
         void deleteSelected() { if (selected == null) return; state.snapshot(); state.items.remove(selected); selected = null; invalidate(); }
         void rotateSelected() {
             if (selected == null) { Toast.makeText(getContext(), "Prima seleziona un ostacolo o un altro elemento", Toast.LENGTH_SHORT).show(); return; }
             if (selected.type.equals("arrow") || selected.type.equals("move") || selected.type.equals("shot") || selected.type.equals("ball") || selected.type.equals("keeper") || selected.type.equals("cone") || selected.type.startsWith("step")) { Toast.makeText(getContext(), "Questo elemento non necessita di rotazione", Toast.LENGTH_SHORT).show(); return; }
             state.snapshot(); selected.rotation = (selected.rotation + 90) % 360; invalidate();
         }
+        void changeSelectedOrder(int delta) {
+            if (selected == null || !selected.type.equals("move")) { Toast.makeText(getContext(), "Seleziona una freccia Movimento P", Toast.LENGTH_SHORT).show(); return; }
+            normalizeMovementOrders();
+            int wanted = selected.order + delta;
+            int count = movementCount();
+            if (wanted < 1 || wanted > count) return;
+            state.snapshot();
+            for (DiagramItem item : state.items) if (item.type.equals("move") && item.order == wanted) { item.order = selected.order; break; }
+            selected.order = wanted;
+            invalidate();
+        }
         void playMovement() {
             List<DiagramItem> movements = new ArrayList<>();
             for (DiagramItem item : state.items) if (item.type.equals("move")) movements.add(item);
             if (movements.isEmpty()) { Toast.makeText(getContext(), "Nessun movimento del portiere riconosciuto", Toast.LENGTH_SHORT).show(); return; }
+            normalizeMovementOrders();
+            Collections.sort(movements, (a, b) -> Integer.compare(a.order, b.order));
             stopMovement();
             showingMovement = true;
             animatedKeeperX = movements.get(0).x;
             animatedKeeperY = movements.get(0).y;
-            movementAnimator = ValueAnimator.ofFloat(0f, movements.size());
-            movementAnimator.setDuration(1100L * movements.size());
-            movementAnimator.addUpdateListener(animation -> {
-                float value = (float) animation.getAnimatedValue();
-                int index = Math.min((int) value, movements.size() - 1);
-                float part = Math.min(1f, value - index);
-                DiagramItem move = movements.get(index);
-                animatedKeeperX = move.x + (move.x2 - move.x) * part;
-                animatedKeeperY = move.y + (move.y2 - move.y) * part;
-                invalidate();
-            });
+            List<Animator> stages = new ArrayList<>();
+            for (DiagramItem move : movements) {
+                ValueAnimator stage = ValueAnimator.ofFloat(0f, 1f);
+                stage.setDuration(900L);
+                stage.addUpdateListener(animation -> {
+                    float part = (float) animation.getAnimatedValue();
+                    animatedKeeperX = move.x + (move.x2 - move.x) * part;
+                    animatedKeeperY = move.y + (move.y2 - move.y) * part;
+                    invalidate();
+                });
+                stages.add(stage);
+            }
+            movementAnimator = new AnimatorSet();
+            movementAnimator.playSequentially(stages);
             movementAnimator.start();
         }
         private void stopMovement() { if (movementAnimator != null) movementAnimator.cancel(); movementAnimator = null; showingMovement = false; }
+        private int movementCount() { int count = 0; for (DiagramItem item : state.items) if (item.type.equals("move")) count++; return count; }
+        private void normalizeMovementOrders() {
+            List<DiagramItem> moves = new ArrayList<>();
+            for (DiagramItem item : state.items) if (item.type.equals("move")) moves.add(item);
+            Collections.sort(moves, (a, b) -> { int ao = a.order <= 0 ? Integer.MAX_VALUE : a.order; int bo = b.order <= 0 ? Integer.MAX_VALUE : b.order; return Integer.compare(ao, bo); });
+            for (int i = 0; i < moves.size(); i++) moves.get(i).order = i + 1;
+        }
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
@@ -402,7 +432,12 @@ public class ExerciseEditorDialog extends Dialog {
 
         private void drawItem(Canvas c, DiagramItem item) {
             float x = sx(item.x), y = sy(item.y), size = Math.max(dp(10), fieldWidth * .032f);
-            if (item.type.equals("arrow") || item.type.equals("move") || item.type.equals("shot")) { drawArrow(c, x, y, sx(item.x2), sy(item.y2), item.type.equals("move") ? Color.rgb(117, 245, 224) : Color.WHITE); return; }
+            if (item.type.equals("arrow") || item.type.equals("move") || item.type.equals("shot")) {
+                float x2 = sx(item.x2), y2 = sy(item.y2);
+                drawArrow(c, x, y, x2, y2, item.type.equals("move") ? Color.rgb(117, 245, 224) : Color.WHITE);
+                if (item.type.equals("move")) drawOrder(c, (x + x2) / 2f, (y + y2) / 2f, item.order);
+                return;
+            }
             if (item.type.equals("keeper") && showingMovement) { x = sx(animatedKeeperX); y = sy(animatedKeeperY); }
             c.save();
             c.rotate(item.rotation, x, y);
@@ -443,6 +478,12 @@ public class ExerciseEditorDialog extends Dialog {
             p.setColor(Color.WHITE); p.setTextSize(size * 1.25f); p.setTypeface(Typeface.DEFAULT_BOLD); p.setTextAlign(Paint.Align.CENTER); c.drawText(letter, x, y + size * .43f, p);
         }
 
+        private void drawOrder(Canvas c, float x, float y, int order) {
+            float radius = dp(10);
+            p.setStyle(Paint.Style.FILL); p.setColor(Color.rgb(255, 220, 55)); c.drawCircle(x, y, radius, p);
+            p.setColor(NAVY); p.setTextSize(dp(12)); p.setTypeface(Typeface.DEFAULT_BOLD); p.setTextAlign(Paint.Align.CENTER); c.drawText(String.valueOf(Math.max(1, order)), x, y + dp(4), p);
+        }
+
         private void drawArrow(Canvas c, float x1, float y1, float x2, float y2, int color) {
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(3)); p.setColor(color); c.drawLine(x1, y1, x2, y2, p);
             double angle = Math.atan2(y2 - y1, x2 - x1); float head = dp(13);
@@ -468,14 +509,25 @@ public class ExerciseEditorDialog extends Dialog {
                 invalidate(); return true;
             }
             if (e.getAction() == MotionEvent.ACTION_UP && isDrawingTool(tool)) {
-                state.snapshot(); DiagramItem arrow = new DiagramItem(tool, downX, downY, nx, ny); state.items.add(arrow); selected = arrow; tool = null; invalidate(); return true;
+                state.snapshot(); DiagramItem arrow = new DiagramItem(tool, downX, downY, nx, ny); if (tool.equals("move")) arrow.order = movementCount() + 1; state.items.add(arrow); selected = arrow; tool = null; invalidate(); return true;
             }
             return true;
         }
 
         private DiagramItem hit(float x, float y) {
-            for (int i = state.items.size() - 1; i >= 0; i--) { DiagramItem item = state.items.get(i); float dx = x - item.x, dy = y - item.y; if (dx * dx + dy * dy < .0035f) return item; }
+            for (int i = state.items.size() - 1; i >= 0; i--) {
+                DiagramItem item = state.items.get(i);
+                if (isArrow(item) && distanceToSegment(x, y, item.x, item.y, item.x2, item.y2) < .035f) return item;
+                float dx = x - item.x, dy = y - item.y; if (dx * dx + dy * dy < .0035f) return item;
+            }
             return null;
+        }
+        private float distanceToSegment(float px, float py, float x1, float y1, float x2, float y2) {
+            float dx = x2 - x1, dy = y2 - y1;
+            if (dx == 0 && dy == 0) return (float)Math.hypot(px - x1, py - y1);
+            float t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+            t = Math.max(0, Math.min(1, t));
+            return (float)Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
         }
         private boolean isDrawingTool(String value) { return "arrow".equals(value) || "move".equals(value) || "shot".equals(value); }
         private float sx(float x) { return fieldLeft + x * fieldWidth; }
