@@ -1,5 +1,6 @@
 package it.paolo.allenamentoportieri;
 
+import android.animation.ValueAnimator;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -112,8 +113,16 @@ public class ExerciseEditorDialog extends Dialog {
         addTool(tools, "Paletto", "pole");
         addTool(tools, "Ostacolo", "hurdle");
         addTool(tools, "Sagoma", "dummy");
+        addTool(tools, "Mister", "coach");
+        addTool(tools, "Giocatore", "player");
+        addTool(tools, "Scaletta", "ladder");
         addTool(tools, "Porta", "goal");
         addTool(tools, "Freccia", "arrow");
+        addTool(tools, "Movimento P", "move");
+        addTool(tools, "Tiro", "shot");
+        addTool(tools, "Fase 1", "step1");
+        addTool(tools, "Fase 2", "step2");
+        addTool(tools, "Fase 3", "step3");
         toolsScroll.addView(tools);
         root.addView(toolsScroll, new LinearLayout.LayoutParams(-1, dp(58)));
 
@@ -124,11 +133,12 @@ public class ExerciseEditorDialog extends Dialog {
         commandsScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout commands = row();
         commands.setPadding(dp(10), dp(8), dp(10), dp(10));
+        addCommand(commands, "▶ Avvia", v -> { board.playMovement(); });
         addCommand(commands, "Annulla", v -> { board.state.undo(); board.invalidate(); });
         addCommand(commands, "Elimina", v -> { board.deleteSelected(); });
         addCommand(commands, "Ruota 90°", v -> { board.rotateSelected(); });
         addCommand(commands, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
-        addCommand(commands, "Ricrea bozza", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
+        addCommand(commands, "Ricrea automazione", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
         commandsScroll.addView(commands);
         root.addView(commandsScroll, new LinearLayout.LayoutParams(-1, dp(68)));
 
@@ -149,7 +159,7 @@ public class ExerciseEditorDialog extends Dialog {
         Button b = compact(label);
         b.setOnClickListener(v -> {
             board.tool = type;
-            Toast.makeText(getContext(), type.equals("arrow") ? "Trascina sul campo per disegnare la freccia" : "Tocca il campo per aggiungere: " + label, Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), type.equals("arrow") || type.equals("move") || type.equals("shot") ? "Trascina sul campo per disegnare: " + label : "Tocca il campo per aggiungere: " + label, Toast.LENGTH_SHORT).show();
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(46));
         lp.setMargins(0, 0, dp(7), 0);
@@ -246,29 +256,79 @@ public class ExerciseEditorDialog extends Dialog {
         static DiagramState automatic(String raw) {
             DiagramState s = new DiagramState();
             String d = raw == null ? "" : raw.toLowerCase(Locale.ITALY);
-            s.items.add(new DiagramItem("keeper", .50f, .82f));
-            s.items.add(new DiagramItem("ball", .50f, .42f));
-            if (d.contains("cross") || d.contains("uscit")) {
-                s.items.add(new DiagramItem("ball", .16f, .35f));
-                s.items.add(new DiagramItem("arrow", .16f, .35f, .50f, .72f));
-                s.items.add(new DiagramItem("dummy", .42f, .68f));
-                s.items.add(new DiagramItem("dummy", .60f, .68f));
+            float startX = d.contains("palo destro") ? .74f : d.contains("palo sinistro") ? .26f : .50f;
+            float startY = .82f;
+            s.items.add(new DiagramItem("keeper", startX, startY));
+
+            boolean mentionsPost = d.contains("palo");
+            boolean opposite = d.contains("contrario") || d.contains("opposto") || d.contains("altro palo");
+            boolean hasCoach = d.contains("mister") || d.contains("allenator") || d.contains("preparator");
+            boolean hasPlayer = d.contains("compagno") || d.contains("attaccant") || d.contains("giocator");
+            boolean hasLadder = d.contains("scaletta") || d.contains("ladder");
+
+            if (mentionsPost) {
+                float firstX;
+                if (d.contains("palo destro")) firstX = .74f;
+                else if (d.contains("palo sinistro")) firstX = .26f;
+                else firstX = .26f;
+                float targetY = .79f;
+                s.items.add(new DiagramItem("move", startX, startY, firstX, targetY));
+                s.items.add(new DiagramItem("step1", (startX + firstX) / 2f, .72f));
+                if (d.contains("presa") || d.contains("palla")) s.items.add(new DiagramItem("ball", firstX, targetY));
+
+                float lastX = firstX;
+                if (opposite) {
+                    float secondX = firstX < .5f ? .74f : .26f;
+                    s.items.add(new DiagramItem("move", firstX, targetY, secondX, targetY));
+                    s.items.add(new DiagramItem("step2", .50f, .68f));
+                    lastX = secondX;
+                }
+                if (hasCoach) {
+                    s.items.add(new DiagramItem("coach", .50f, .18f));
+                    s.items.add(new DiagramItem("ball", .50f, .25f));
+                    s.items.add(new DiagramItem("shot", .50f, .27f, lastX, .75f));
+                    s.items.add(new DiagramItem(opposite ? "step3" : "step2", .58f, .46f));
+                }
+                if (hasPlayer) s.items.add(new DiagramItem("player", .23f, .25f));
+                if (hasLadder) { DiagramItem ladder = new DiagramItem("ladder", .38f, .58f); ladder.rotation = 45; s.items.add(ladder); }
+            } else if (d.contains("cross") || d.contains("uscit")) {
+                float sourceX = d.contains("destr") ? .82f : .18f;
+                s.items.add(new DiagramItem(hasCoach ? "coach" : "player", sourceX, .20f));
+                s.items.add(new DiagramItem("ball", sourceX, .25f));
+                s.items.add(new DiagramItem("shot", sourceX, .27f, .50f, .62f));
+                s.items.add(new DiagramItem("move", .50f, .82f, .50f, .62f));
+                s.items.add(new DiagramItem("step1", .43f, .69f));
+                s.items.add(new DiagramItem("dummy", .40f, .60f));
+                s.items.add(new DiagramItem("dummy", .62f, .60f));
             } else if (d.contains("slalom") || d.contains("palett") || d.contains("cono") || d.contains("cinesin")) {
                 for (int i = 0; i < 5; i++) s.items.add(new DiagramItem(d.contains("palett") ? "pole" : "cone", .30f + i * .10f, .55f + (i % 2) * .06f));
-                s.items.add(new DiagramItem("arrow", .50f, .80f, .50f, .35f));
+                s.items.add(new DiagramItem("move", .50f, .82f, .50f, .35f));
+                s.items.add(new DiagramItem("step1", .58f, .58f));
             } else if (d.contains("ostacol") || d.contains("balz") || d.contains("forza")) {
                 s.items.add(new DiagramItem("hurdle", .35f, .62f));
                 s.items.add(new DiagramItem("hurdle", .50f, .55f));
                 s.items.add(new DiagramItem("hurdle", .65f, .48f));
-                s.items.add(new DiagramItem("arrow", .32f, .72f, .70f, .38f));
+                s.items.add(new DiagramItem("move", .50f, .82f, .70f, .38f));
+                s.items.add(new DiagramItem("step1", .62f, .63f));
             } else if (d.contains("tuff") || d.contains("lateral")) {
                 s.items.add(new DiagramItem("ball", .25f, .76f));
                 s.items.add(new DiagramItem("ball", .75f, .76f));
-                s.items.add(new DiagramItem("arrow", .50f, .82f, .25f, .76f));
-                s.items.add(new DiagramItem("arrow", .50f, .82f, .75f, .76f));
+                float targetX = d.contains("destr") ? .75f : .25f;
+                s.items.add(new DiagramItem("move", .50f, .82f, targetX, .76f));
+                s.items.add(new DiagramItem("step1", (targetX + .50f) / 2f, .69f));
+                if (d.contains("poi") || d.contains("dopo") || d.contains("second")) {
+                    float secondX = targetX < .5f ? .75f : .25f;
+                    s.items.add(new DiagramItem("move", targetX, .76f, secondX, .76f));
+                    s.items.add(new DiagramItem("step2", .50f, .65f));
+                }
             } else {
-                s.items.add(new DiagramItem("keeper", .35f, .35f));
-                s.items.add(new DiagramItem("arrow", .35f, .38f, .50f, .76f));
+                if (hasCoach) s.items.add(new DiagramItem("coach", .50f, .18f));
+                else if (hasPlayer) s.items.add(new DiagramItem("player", .50f, .18f));
+                if (hasCoach || hasPlayer || d.contains("tiro") || d.contains("palla")) {
+                    s.items.add(new DiagramItem("ball", .50f, .28f));
+                    s.items.add(new DiagramItem("shot", .50f, .30f, .50f, .76f));
+                }
+                if (hasLadder) { s.items.add(new DiagramItem("ladder", .50f, .55f)); s.items.add(new DiagramItem("move", .50f, .82f, .50f, .42f)); s.items.add(new DiagramItem("step1", .58f, .60f)); }
             }
             return s;
         }
@@ -281,15 +341,40 @@ public class ExerciseEditorDialog extends Dialog {
         private DiagramItem selected;
         private float fieldLeft, fieldTop, fieldWidth, fieldHeight;
         private float downX, downY;
+        private ValueAnimator movementAnimator;
+        private boolean showingMovement;
+        private float animatedKeeperX, animatedKeeperY;
 
         DiagramCanvas(Context context) { super(context); setBackgroundColor(Color.rgb(229, 239, 233)); }
-        void setState(DiagramState state) { this.state = state; selected = null; tool = null; invalidate(); }
+        void setState(DiagramState state) { stopMovement(); this.state = state; selected = null; tool = null; invalidate(); }
         void deleteSelected() { if (selected == null) return; state.snapshot(); state.items.remove(selected); selected = null; invalidate(); }
         void rotateSelected() {
             if (selected == null) { Toast.makeText(getContext(), "Prima seleziona un ostacolo o un altro elemento", Toast.LENGTH_SHORT).show(); return; }
-            if (selected.type.equals("arrow") || selected.type.equals("ball") || selected.type.equals("keeper") || selected.type.equals("cone")) { Toast.makeText(getContext(), "Questo elemento non necessita di rotazione", Toast.LENGTH_SHORT).show(); return; }
+            if (selected.type.equals("arrow") || selected.type.equals("move") || selected.type.equals("shot") || selected.type.equals("ball") || selected.type.equals("keeper") || selected.type.equals("cone") || selected.type.startsWith("step")) { Toast.makeText(getContext(), "Questo elemento non necessita di rotazione", Toast.LENGTH_SHORT).show(); return; }
             state.snapshot(); selected.rotation = (selected.rotation + 90) % 360; invalidate();
         }
+        void playMovement() {
+            List<DiagramItem> movements = new ArrayList<>();
+            for (DiagramItem item : state.items) if (item.type.equals("move")) movements.add(item);
+            if (movements.isEmpty()) { Toast.makeText(getContext(), "Nessun movimento del portiere riconosciuto", Toast.LENGTH_SHORT).show(); return; }
+            stopMovement();
+            showingMovement = true;
+            animatedKeeperX = movements.get(0).x;
+            animatedKeeperY = movements.get(0).y;
+            movementAnimator = ValueAnimator.ofFloat(0f, movements.size());
+            movementAnimator.setDuration(1100L * movements.size());
+            movementAnimator.addUpdateListener(animation -> {
+                float value = (float) animation.getAnimatedValue();
+                int index = Math.min((int) value, movements.size() - 1);
+                float part = Math.min(1f, value - index);
+                DiagramItem move = movements.get(index);
+                animatedKeeperX = move.x + (move.x2 - move.x) * part;
+                animatedKeeperY = move.y + (move.y2 - move.y) * part;
+                invalidate();
+            });
+            movementAnimator.start();
+        }
+        private void stopMovement() { if (movementAnimator != null) movementAnimator.cancel(); movementAnimator = null; showingMovement = false; }
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
@@ -298,8 +383,11 @@ public class ExerciseEditorDialog extends Dialog {
             p.setStyle(Paint.Style.FILL); p.setColor(Color.rgb(48, 145, 80));
             c.drawRoundRect(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldTop + fieldHeight, dp(12), dp(12), p);
             drawField(c);
-            for (DiagramItem item : state.items) drawItem(c, item);
+            for (DiagramItem item : state.items) if (isArrow(item)) drawItem(c, item);
+            for (DiagramItem item : state.items) if (!isArrow(item)) drawItem(c, item);
         }
+
+        private boolean isArrow(DiagramItem item) { return item.type.equals("arrow") || item.type.equals("move") || item.type.equals("shot"); }
 
         private void drawField(Canvas c) {
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(2)); p.setColor(Color.argb(220, 255, 255, 255));
@@ -314,7 +402,8 @@ public class ExerciseEditorDialog extends Dialog {
 
         private void drawItem(Canvas c, DiagramItem item) {
             float x = sx(item.x), y = sy(item.y), size = Math.max(dp(10), fieldWidth * .032f);
-            if (item.type.equals("arrow")) { drawArrow(c, x, y, sx(item.x2), sy(item.y2)); return; }
+            if (item.type.equals("arrow") || item.type.equals("move") || item.type.equals("shot")) { drawArrow(c, x, y, sx(item.x2), sy(item.y2), item.type.equals("move") ? Color.rgb(117, 245, 224) : Color.WHITE); return; }
+            if (item.type.equals("keeper") && showingMovement) { x = sx(animatedKeeperX); y = sy(animatedKeeperY); }
             c.save();
             c.rotate(item.rotation, x, y);
             p.setStyle(Paint.Style.FILL);
@@ -332,26 +421,42 @@ public class ExerciseEditorDialog extends Dialog {
                     p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(size * .28f); p.setColor(Color.rgb(245, 190, 35)); c.drawLine(x - size, y + size * .7f, x - size, y - size * .55f, p); c.drawLine(x + size, y + size * .7f, x + size, y - size * .55f, p); c.drawLine(x - size, y - size * .55f, x + size, y - size * .55f, p); break;
                 case "dummy":
                     p.setColor(Color.rgb(218, 72, 72)); c.drawCircle(x, y - size, size * .55f, p); c.drawRoundRect(x - size * .65f, y - size * .45f, x + size * .65f, y + size * 1.2f, size * .25f, size * .25f, p); break;
+                case "coach":
+                    drawPerson(c, x, y, size, Color.rgb(188, 55, 55), "M"); break;
+                case "player":
+                    drawPerson(c, x, y, size, Color.rgb(96, 54, 160), "G"); break;
+                case "ladder":
+                    p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(2)); p.setColor(Color.rgb(255, 205, 45));
+                    c.drawLine(x - size * 2.2f, y - size, x + size * 2.2f, y - size, p); c.drawLine(x - size * 2.2f, y + size, x + size * 2.2f, y + size, p);
+                    for (int i = -2; i <= 2; i++) c.drawLine(x + i * size, y - size, x + i * size, y + size, p); break;
                 case "goal":
                     p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(3)); p.setColor(Color.WHITE); c.drawRect(x - size * 2.0f, y - size, x + size * 2.0f, y + size, p); break;
+                case "step1": case "step2": case "step3":
+                    p.setColor(Color.rgb(255, 220, 55)); c.drawCircle(x, y, size, p); p.setColor(NAVY); p.setTextSize(size * 1.25f); p.setTypeface(Typeface.DEFAULT_BOLD); p.setTextAlign(Paint.Align.CENTER); c.drawText(item.type.substring(4), x, y + size * .45f, p); break;
             }
             c.restore();
             if (item == selected) { p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(2)); p.setColor(Color.rgb(255, 235, 59)); c.drawCircle(x, y, size * 2.1f, p); }
         }
 
-        private void drawArrow(Canvas c, float x1, float y1, float x2, float y2) {
-            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(3)); p.setColor(Color.WHITE); c.drawLine(x1, y1, x2, y2, p);
+        private void drawPerson(Canvas c, float x, float y, float size, int color, String letter) {
+            p.setStyle(Paint.Style.FILL); p.setColor(color); c.drawCircle(x, y, size * 1.25f, p);
+            p.setColor(Color.WHITE); p.setTextSize(size * 1.25f); p.setTypeface(Typeface.DEFAULT_BOLD); p.setTextAlign(Paint.Align.CENTER); c.drawText(letter, x, y + size * .43f, p);
+        }
+
+        private void drawArrow(Canvas c, float x1, float y1, float x2, float y2, int color) {
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(3)); p.setColor(color); c.drawLine(x1, y1, x2, y2, p);
             double angle = Math.atan2(y2 - y1, x2 - x1); float head = dp(13);
             Path path = new Path(); path.moveTo(x2, y2); path.lineTo((float)(x2 - head * Math.cos(angle - .55)), (float)(y2 - head * Math.sin(angle - .55))); path.moveTo(x2, y2); path.lineTo((float)(x2 - head * Math.cos(angle + .55)), (float)(y2 - head * Math.sin(angle + .55))); c.drawPath(path, p);
             if (selected != null && selected.type.equals("arrow") && selected.x == nx(x1) && selected.y == ny(y1)) { p.setColor(Color.YELLOW); c.drawCircle(x1, y1, dp(6), p); c.drawCircle(x2, y2, dp(6), p); }
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) stopMovement();
             float nx = nx(e.getX()), ny = ny(e.getY());
             if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return true;
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 downX = nx; downY = ny;
-                if ("arrow".equals(tool)) return true;
+                if (isDrawingTool(tool)) return true;
                 if (tool != null) { state.snapshot(); DiagramItem item = new DiagramItem(tool, nx, ny); state.items.add(item); selected = item; tool = null; invalidate(); return true; }
                 selected = hit(nx, ny);
                 if (selected != null) state.snapshot();
@@ -362,8 +467,8 @@ public class ExerciseEditorDialog extends Dialog {
                 else { selected.x = nx; selected.y = ny; }
                 invalidate(); return true;
             }
-            if (e.getAction() == MotionEvent.ACTION_UP && "arrow".equals(tool)) {
-                state.snapshot(); DiagramItem arrow = new DiagramItem("arrow", downX, downY, nx, ny); state.items.add(arrow); selected = arrow; tool = null; invalidate(); return true;
+            if (e.getAction() == MotionEvent.ACTION_UP && isDrawingTool(tool)) {
+                state.snapshot(); DiagramItem arrow = new DiagramItem(tool, downX, downY, nx, ny); state.items.add(arrow); selected = arrow; tool = null; invalidate(); return true;
             }
             return true;
         }
@@ -372,6 +477,7 @@ public class ExerciseEditorDialog extends Dialog {
             for (int i = state.items.size() - 1; i >= 0; i--) { DiagramItem item = state.items.get(i); float dx = x - item.x, dy = y - item.y; if (dx * dx + dy * dy < .0035f) return item; }
             return null;
         }
+        private boolean isDrawingTool(String value) { return "arrow".equals(value) || "move".equals(value) || "shot".equals(value); }
         private float sx(float x) { return fieldLeft + x * fieldWidth; }
         private float sy(float y) { return fieldTop + y * fieldHeight; }
         private float nx(float x) { return fieldWidth == 0 ? 0 : (x - fieldLeft) / fieldWidth; }

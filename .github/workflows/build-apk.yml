@@ -21,6 +21,6 @@ jobs:
           ./gradlew assembleDebug
       - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v1.7-campo-icona
+          name: Allenamento-Portieri-v1.8-automazione-animata
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
