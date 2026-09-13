@@ -53,12 +53,14 @@ public class ExerciseEditorDialog extends Dialog {
     private TextView description;
     private DiagramCanvas board;
     private int current;
+    private final String language;
 
     public ExerciseEditorDialog(Context context, List<String> descriptions, List<String> saved, OnSaveListener listener) {
         super(context, android.R.style.Theme_Material_Light_NoActionBar);
         this.descriptions = new ArrayList<>(descriptions);
         this.listener = listener;
         this.templates = context.getSharedPreferences("exercise_diagram_library", Context.MODE_PRIVATE);
+        this.language = context.getSharedPreferences("goalkeeper_training", Context.MODE_PRIVATE).getString("language", "it");
         for (int i = 0; i < descriptions.size(); i++) {
             DiagramState state = i < saved.size() ? DiagramState.fromJson(saved.get(i)) : null;
             states.add(state == null ? learnedOrAutomatic(descriptions.get(i)) : state);
@@ -143,7 +145,7 @@ public class ExerciseEditorDialog extends Dialog {
         addCommand(extra, "Ordine +", v -> board.changeSelectedOrder(1)); addCommand(extra, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
         addCommand(extra, "Ricrea automazione", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
         extraScroll.addView(extra); root.addView(extraScroll, new LinearLayout.LayoutParams(-1, dp(56)));
-        more.setOnClickListener(v -> { boolean open = extraScroll.getVisibility() == View.VISIBLE; extraScroll.setVisibility(open ? View.GONE : View.VISIBLE); more.setText(open ? "ALTRE AZIONI  ▾" : "ALTRE AZIONI  ▴"); });
+        more.setOnClickListener(v -> { boolean open = extraScroll.getVisibility() == View.VISIBLE; extraScroll.setVisibility(open ? View.GONE : View.VISIBLE); more.setText(tr(open ? "ALTRE AZIONI  ▾" : "ALTRE AZIONI  ▴")); });
 
         setContentView(root);
         showCurrent();
@@ -191,7 +193,9 @@ public class ExerciseEditorDialog extends Dialog {
 
     private void showCurrent() {
         if (board == null) return;
-        counter.setText("Esercizio " + (current + 1) + " di " + descriptions.size());
+        String word = "en".equals(language) ? "Exercise" : "es".equals(language) ? "Ejercicio" : "fr".equals(language) ? "Exercice" : "de".equals(language) ? "Übung" : "Esercizio";
+        String of = "en".equals(language) ? " of " : "es".equals(language) ? " de " : "fr".equals(language) ? " sur " : "de".equals(language) ? " von " : " di ";
+        counter.setText(word + " " + (current + 1) + of + descriptions.size());
         description.setText(numberedPhases(descriptions.get(current)));
         board.setState(states.get(current));
     }
@@ -245,13 +249,53 @@ public class ExerciseEditorDialog extends Dialog {
     }
 
     private LinearLayout row() { LinearLayout v = new LinearLayout(getContext()); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
-    private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(getContext()); v.setText(value); v.setTextSize(size); v.setTextColor(color == NAVY ? TEXT : color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
-    private Button button(String value) { Button b = new Button(getContext()); b.setText(value); b.setTextSize(14); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setBackgroundColor(Color.TRANSPARENT); return b; }
+    private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(getContext()); v.setText(tr(value)); v.setTextSize(size); v.setTextColor(color == NAVY ? TEXT : color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
+    private Button button(String value) { Button b = new Button(getContext()); b.setText(tr(value)); b.setTextSize(14); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setBackgroundColor(Color.TRANSPARENT); return b; }
     private Button compact(String value) { Button b = button(value); b.setTextColor(TEXT); b.setPadding(dp(14), 0, dp(14), 0); b.setBackground(rounded(SURFACE, CYAN)); return b; }
     private Button categoryButton(String value, int color) { Button b = compactColor(value, color); b.setTextSize(10); b.setPadding(dp(4), 0, dp(4), 0); return b; }
     private Button compactColor(String value, int color) { Button b = button(value); b.setTextColor(Color.WHITE); b.setPadding(dp(12), 0, dp(12), 0); b.setBackground(rounded(color, color)); return b; }
     private GradientDrawable rounded(int fill, int stroke) { GradientDrawable d = new GradientDrawable(); d.setColor(fill); d.setCornerRadius(dp(10)); d.setStroke(dp(1), stroke); return d; }
     private GradientDrawable techGradient(int start, int end, int stroke, int width) { GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{start, end}); d.setCornerRadius(dp(12)); if (width > 0) d.setStroke(dp(width), stroke); return d; }
+    private String tr(String it) {
+        if ("it".equals(language)) return it; String[] v;
+        switch (it) {
+            case "SCHEMI ESERCIZI": v=a("EXERCISE DIAGRAMS","ESQUEMAS DE EJERCICIOS","SCHÉMAS D’EXERCICES","ÜBUNGSPLÄNE"); break;
+            case "‹  Chiudi": v=a("‹  Close","‹  Cerrar","‹  Fermer","‹  Schließen"); break;
+            case "Salva": v=a("Save","Guardar","Enregistrer","Speichern"); break;
+            case "PERSONE E PALLONI": v=a("PEOPLE & BALLS","PERSONAS Y BALONES","PERSONNES ET BALLONS","PERSONEN & BÄLLE"); break;
+            case "ATTREZZATURA": v=a("EQUIPMENT","MATERIAL","MATÉRIEL","AUSRÜSTUNG"); break;
+            case "MOVIMENTI": v=a("MOVEMENTS","MOVIMIENTOS","MOUVEMENTS","BEWEGUNGEN"); break;
+            case "Portiere": v=a("Goalkeeper","Portero","Gardien","Torwart"); break;
+            case "Mister": v=a("Coach","Entrenador","Entraîneur","Trainer"); break;
+            case "Giocatore": v=a("Player","Jugador","Joueur","Spieler"); break;
+            case "Palla": v=a("Ball","Balón","Ballon","Ball"); break;
+            case "Cono": v=a("Cone","Cono","Cône","Kegel"); break;
+            case "Paletto": v=a("Pole","Pica","Piquet","Stange"); break;
+            case "Ostacolo": v=a("Hurdle","Valla","Haie","Hürde"); break;
+            case "Sagoma": v=a("Dummy","Maniquí","Mannequin","Dummy"); break;
+            case "Scaletta": v=a("Ladder","Escalera","Échelle","Leiter"); break;
+            case "Porta": v=a("Goal","Portería","But","Tor"); break;
+            case "Freccia": v=a("Arrow","Flecha","Flèche","Pfeil"); break;
+            case "Movimento P": v=a("GK movement","Movimiento P","Mouvement G","TW-Bewegung"); break;
+            case "Tiro": v=a("Shot","Tiro","Tir","Schuss"); break;
+            case "Fase 1": v=a("Step 1","Fase 1","Phase 1","Phase 1"); break;
+            case "Fase 2": v=a("Step 2","Fase 2","Phase 2","Phase 2"); break;
+            case "Fase 3": v=a("Step 3","Fase 3","Phase 3","Phase 3"); break;
+            case "▶ Avvia": v=a("▶ Play","▶ Iniciar","▶ Démarrer","▶ Start"); break;
+            case "Annulla": v=a("Undo","Deshacer","Annuler","Rückgängig"); break;
+            case "Elimina": v=a("Delete","Eliminar","Supprimer","Löschen"); break;
+            case "ALTRE AZIONI  ▾": v=a("MORE ACTIONS  ▾","MÁS ACCIONES  ▾","AUTRES ACTIONS  ▾","MEHR AKTIONEN  ▾"); break;
+            case "ALTRE AZIONI  ▴": v=a("MORE ACTIONS  ▴","MÁS ACCIONES  ▴","AUTRES ACTIONS  ▴","MEHR AKTIONEN  ▴"); break;
+            case "Ruota 90°": v=a("Rotate 90°","Girar 90°","Tourner 90°","90° drehen"); break;
+            case "Ordine −": v=a("Order −","Orden −","Ordre −","Reihenfolge −"); break;
+            case "Ordine +": v=a("Order +","Orden +","Ordre +","Reihenfolge +"); break;
+            case "Pulisci": v=a("Clear","Limpiar","Effacer","Leeren"); break;
+            case "Ricrea automazione": v=a("Recreate automation","Recrear automatización","Recréer l’automatisation","Automatik neu erstellen"); break;
+            default: return it;
+        }
+        return "en".equals(language)?v[0]:"es".equals(language)?v[1]:"fr".equals(language)?v[2]:v[3];
+    }
+    private String[] a(String en,String es,String fr,String de){ return new String[]{en,es,fr,de}; }
     private int dp(int value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
 
     private static class DiagramItem {

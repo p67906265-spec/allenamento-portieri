@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
     private static final int PICK_PHOTO = 40;
     private static final int EXPORT_BACKUP = 41;
     private static final int IMPORT_BACKUP = 42;
+    private static final String REPORT_EMAIL = "p67906265@gmail.com";
     private final SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ITALY);
     private final SimpleDateFormat pretty = new SimpleDateFormat("EEEE d MMMM yyyy", Locale.ITALY);
     private final List<Session> sessions = new ArrayList<>();
@@ -98,10 +99,12 @@ public class MainActivity extends Activity {
     private String historySeasonFilter = "Tutte le stagioni";
     private String historyPersonFilter = "Tutti i portieri";
     private final ExecutorService backupExecutor = Executors.newSingleThreadExecutor();
+    private String language = "it";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("goalkeeper_training", MODE_PRIVATE);
+        language = prefs.getString("language", "it");
         load();
         loadGoalkeepers();
         showSportTechIntro();
@@ -145,8 +148,8 @@ public class MainActivity extends Activity {
         head.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(54)));
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        TextView t = text(title, 25, Color.WHITE, true);
-        if ("Allenamento Portieri".equals(title)) { SpannableString styled = new SpannableString(title); styled.setSpan(new ForegroundColorSpan(GREEN), 12, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE); t.setText(styled); }
+        String shownTitle = tr(title); TextView t = text(title, 25, Color.WHITE, true);
+        if ("Allenamento Portieri".equals(title)) { SpannableString styled = new SpannableString(shownTitle); int accentFrom = Math.max(0, shownTitle.lastIndexOf(' ') + 1); styled.setSpan(new ForegroundColorSpan(GREEN), accentFrom, shownTitle.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE); t.setText(styled); }
         titles.addView(t);
         if (subtitle != null && !subtitle.isEmpty()) {
             TextView st = text(subtitle, 14, Color.rgb(202, 219, 231), false);
@@ -181,6 +184,8 @@ public class MainActivity extends Activity {
         addMenuItem(panel, "⚽  Suggerimenti", dialog, this::showPlanner);
         addMenuItem(panel, "↕  Backup e trasferimento", dialog, this::showBackupPanel);
         addMenuItem(panel, "?  Istruzioni di utilizzo", dialog, this::showInstructions);
+        addMenuItem(panel, "✉  Segnalazioni", dialog, this::showReports);
+        addMenuItem(panel, "🌐  Lingua", dialog, this::showLanguage);
         addMenuItem(panel, "ⓘ  Informazioni", dialog, this::showAbout);
         dialog.setOnShowListener(v -> { tint(dialog); if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(round(Color.TRANSPARENT, 18, Color.TRANSPARENT, 0)); });
         dialog.show();
@@ -195,11 +200,28 @@ public class MainActivity extends Activity {
 
     private void showInstructions() {
         String message = "1. Crea la lista dei portieri.\n\n2. Registra una seduta indicando data, durata, partecipanti ed esercizi.\n\n3. Scrivi un esercizio per riga oppure separa le fasi con il punto e virgola (;).\n\n4. Apri Schemi esercizi per disegnare o correggere ogni esercizio. Trascina gli estremi delle frecce per cambiarne direzione.\n\n5. Consulta lo storico dal calendario e usa i filtri.\n\n6. Esporta periodicamente un backup per trasferire o conservare i dati.";
-        tint(new AlertDialog.Builder(this).setTitle("Istruzioni di utilizzo").setMessage(message).setPositiveButton("Ho capito", null).show());
+        tint(new AlertDialog.Builder(this).setTitle(tr("Istruzioni di utilizzo")).setMessage(tr(message)).setPositiveButton(tr("Ho capito"), null).show());
     }
 
     private void showAbout() {
-        tint(new AlertDialog.Builder(this).setTitle("Allenamento Portieri").setMessage("Diario, archivio e schemi per le sedute dei portieri.\n\nPaolo Free 1.0").setPositiveButton("Chiudi", null).show());
+        homeVisible = false; base("Informazioni", "Allenamento Portieri"); LinearLayout box = card();
+        box.addView(text("ALLENAMENTO PORTIERI", 22, GREEN, true)); TextView copy = text("Diario, archivio e schemi per le sedute dei portieri.", 16, TEXT, false); copy.setPadding(0, dp(12), 0, dp(18)); box.addView(copy);
+        TextView signature = text("Paolo Free 1.0", 18, TEXT, true); signature.setGravity(Gravity.CENTER); signature.setPadding(dp(12), dp(14), dp(12), dp(14)); signature.setBackground(round(Color.rgb(7, 47, 65), 12, GREEN, 1)); box.addView(signature); content.addView(box);
+    }
+
+    private void showLanguage() {
+        homeVisible = false; base("Lingua", "Scegli la lingua dell’app");
+        String[][] languages = {{"Italiano","it"},{"English","en"},{"Español","es"},{"Français","fr"},{"Deutsch","de"}};
+        for (String[] item : languages) { Button choice = secondary((language.equals(item[1]) ? "✓  " : "") + item[0]); choice.setOnClickListener(v -> { language = item[1]; prefs.edit().putString("language", language).apply(); showHome(); }); marginBottom(choice, 9); content.addView(choice); }
+    }
+
+    private void showReports() {
+        homeVisible = false; base("Segnalazioni", "Invia un suggerimento o segnala un problema");
+        EditText sender = input("La tua email", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS); content.addView(sender);
+        String[] types = {"Suggerimento", "Bug"}; Spinner type = spinner(types); marginTop(type, 9); content.addView(type);
+        EditText message = input("Descrivi il suggerimento o il problema", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE); message.setMinLines(6); marginTop(message, 9); content.addView(message);
+        Button send = primary("INVIA SEGNALAZIONE"); marginTop(send, 14); content.addView(send);
+        send.setOnClickListener(v -> { String from = sender.getText().toString().trim(), body = message.getText().toString().trim(); if (from.isEmpty() || body.isEmpty()) { Toast.makeText(this, tr("Compila email e descrizione"), Toast.LENGTH_SHORT).show(); return; } String subject = "Allenamento Portieri - " + type.getSelectedItem(); String mailBody = "Email utente: " + from + "\n\n" + body; Intent email = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + REPORT_EMAIL + "?subject=" + Uri.encode(subject) + "&body=" + Uri.encode(mailBody))); try { startActivity(email); } catch (Exception e) { Toast.makeText(this, tr("Nessuna app email disponibile"), Toast.LENGTH_LONG).show(); } });
     }
 
     private void showBackupPanel() {
@@ -322,21 +344,18 @@ public class MainActivity extends Activity {
         content.removeViews(1, content.getChildCount() - 1);
         LinearLayout filters = card();
         filters.addView(text("Filtra gli allenamenti", 17, NAVY, true));
-        filters.addView(label("Tipologia"));
         String[] goalFilters = withFirst("Tutte le tipologie", GOALS);
         Spinner goalFilter = spinner(goalFilters);
         goalFilter.setSelection(indexOf(goalFilters, historyGoalFilter));
         filters.addView(goalFilter);
-        filters.addView(label("Stagione"));
         String[] seasonFilters = withFirst("Tutte le stagioni", seasons());
         Spinner seasonFilter = spinner(seasonFilters);
         seasonFilter.setSelection(indexOf(seasonFilters, historySeasonFilter));
-        filters.addView(seasonFilter);
-        filters.addView(label("Portiere"));
+        filterMargin(seasonFilter); filters.addView(seasonFilter);
         String[] personFilters = withFirst("Tutti i portieri", people());
         Spinner personFilter = spinner(personFilters);
         personFilter.setSelection(indexOf(personFilters, historyPersonFilter));
-        filters.addView(personFilter);
+        filterMargin(personFilter); filters.addView(personFilter);
         Button apply = secondary("APPLICA FILTRI");
         marginTop(apply, 10);
         apply.setOnClickListener(v -> {
@@ -355,7 +374,7 @@ public class MainActivity extends Activity {
         previous.setTextSize(22);
         previous.setOnClickListener(v -> { historyMonth.add(Calendar.MONTH, -1); selectedHistoryDate = null; renderCalendar(); });
         monthBar.addView(previous, new LinearLayout.LayoutParams(dp(48), dp(44)));
-        SimpleDateFormat monthFormat = new SimpleDateFormat("MMMM yyyy", Locale.ITALY);
+        SimpleDateFormat monthFormat = new SimpleDateFormat("MMMM yyyy", appLocale());
         TextView month = text(capitalize(monthFormat.format(historyMonth.getTime())), 19, NAVY, true);
         month.setGravity(Gravity.CENTER);
         monthBar.addView(month, weight());
@@ -367,7 +386,7 @@ public class MainActivity extends Activity {
 
         GridLayout grid = new GridLayout(this);
         grid.setColumnCount(7);
-        String[] weekdays = {"L", "M", "M", "G", "V", "S", "D"};
+        String[] weekdays = calendarWeekdays();
         for (String day : weekdays) {
             TextView h = text(day, 12, MUTED, true);
             h.setGravity(Gravity.CENTER);
@@ -388,13 +407,10 @@ public class MainActivity extends Activity {
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER);
             cell.setPadding(dp(2), dp(5), dp(2), dp(4));
-            cell.setBackground(selected ? techGradient(Color.rgb(8, 78, 79), Color.rgb(5, 48, 65), GREEN, 2) : round(Color.TRANSPARENT, 10, Color.TRANSPARENT, 0));
+            cell.setBackground(selected ? techGradient(Color.rgb(8, 92, 82), Color.rgb(5, 48, 65), Color.rgb(118, 255, 213), 3) : trained ? round(Color.TRANSPARENT, 30, GREEN, 2) : round(Color.TRANSPARENT, 10, Color.TRANSPARENT, 0));
             TextView number = text(String.valueOf(day), 15, selected ? Color.WHITE : NAVY, selected || trained);
             number.setGravity(Gravity.CENTER);
-            cell.addView(number, new LinearLayout.LayoutParams(-1, dp(24)));
-            TextView dot = text(trained ? "●" : "", 11, selected ? Color.rgb(94, 234, 192) : GREEN, true);
-            dot.setGravity(Gravity.CENTER);
-            cell.addView(dot, new LinearLayout.LayoutParams(-1, dp(17)));
+            cell.addView(number, new LinearLayout.LayoutParams(-1, -1));
             cell.setOnClickListener(v -> { selectedHistoryDate = key; renderCalendar(); });
             grid.addView(cell, gridCell());
         }
@@ -494,7 +510,7 @@ public class MainActivity extends Activity {
         marginTop(actions, 10);
         details.addView(actions);
         card.addView(details);
-        toggle.setOnClickListener(v -> { boolean open = details.getVisibility() == View.VISIBLE; details.setVisibility(open ? View.GONE : View.VISIBLE); toggle.setText(open ? "VEDI  ▾" : "CHIUDI  ▴"); });
+        toggle.setOnClickListener(v -> { boolean open = details.getVisibility() == View.VISIBLE; details.setVisibility(open ? View.GONE : View.VISIBLE); toggle.setText(tr(open ? "VEDI  ▾" : "CHIUDI  ▴")); });
         summary.setOnClickListener(v -> toggle.performClick());
         return card;
     }
@@ -934,8 +950,10 @@ public class MainActivity extends Activity {
         return result;
     }
     private int totalMinutes() { int n = 0; for (Session s : sessions) n += s.minutes; return n; }
-    private String formatDate(String value) { try { return capitalize(pretty.format(iso.parse(value))); } catch (ParseException e) { return value; } }
-    private String capitalize(String s) { return s == null || s.isEmpty() ? s : s.substring(0, 1).toUpperCase(Locale.ITALY) + s.substring(1); }
+    private String formatDate(String value) { try { return capitalize(new SimpleDateFormat("EEEE d MMMM yyyy", appLocale()).format(iso.parse(value))); } catch (ParseException e) { return value; } }
+    private String capitalize(String s) { return s == null || s.isEmpty() ? s : s.substring(0, 1).toUpperCase(appLocale()) + s.substring(1); }
+    private Locale appLocale() { if ("en".equals(language)) return Locale.ENGLISH; if ("es".equals(language)) return new Locale("es"); if ("fr".equals(language)) return Locale.FRENCH; if ("de".equals(language)) return Locale.GERMAN; return Locale.ITALIAN; }
+    private String[] calendarWeekdays() { if ("en".equals(language)) return new String[]{"M","T","W","T","F","S","S"}; if ("es".equals(language)) return new String[]{"L","M","X","J","V","S","D"}; if ("fr".equals(language)) return new String[]{"L","M","M","J","V","S","D"}; if ("de".equals(language)) return new String[]{"M","D","M","D","F","S","S"}; return new String[]{"L","M","M","G","V","S","D"}; }
     private int indexOf(String[] items, String value) { for (int i = 0; i < items.length; i++) if (items[i].equals(value)) return i; return 0; }
     private String[] withFirst(String first, String[] values) { String[] result = new String[values.length + 1]; result[0] = first; System.arraycopy(values, 0, result, 1, values.length); return result; }
     private String seasonForDate(String date) { try { Calendar c = Calendar.getInstance(); c.setTime(iso.parse(date)); int y = c.get(Calendar.YEAR); if (c.get(Calendar.MONTH) < Calendar.JULY) y--; return y + "/" + String.valueOf(y + 1).substring(2); } catch (Exception e) { return "2026/27"; } }
@@ -960,23 +978,109 @@ public class MainActivity extends Activity {
         }).show();
     }
 
+    private String tr(String it) {
+        if (it == null || "it".equals(language)) return it;
+        String[] v;
+        switch (it) {
+            case "Allenamento Portieri": v=a("Goalkeeper Training","Entrenamiento de Porteros","Entraînement des Gardiens","Torwarttraining"); break;
+            case "ALLENAMENTO PORTIERI": v=a("GOALKEEPER TRAINING","ENTRENAMIENTO DE PORTEROS","ENTRAÎNEMENT DES GARDIENS","TORWARTTRAINING"); break;
+            case "Diario e programmazione delle sedute": v=a("Training diary and planning","Diario y planificación de sesiones","Journal et planification des séances","Trainingstagebuch und Planung"); break;
+            case "Non hai ancora registrato allenamenti.\nPremi il pulsante verde per iniziare.": v=a("No training recorded yet.\nPress the green button to begin.","Aún no hay entrenamientos.\nPulsa el botón verde para empezar.","Aucun entraînement enregistré.\nAppuyez sur le bouton vert pour commencer.","Noch kein Training gespeichert.\nDrücke zum Starten die grüne Taste."); break;
+            case "Scegli obiettivo e durata: l’app prepara una proposta completa che puoi adattare e salvare.": v=a("Choose a goal and duration: the app creates a complete plan you can adapt and save.","Elige objetivo y duración: la aplicación prepara un plan que puedes adaptar y guardar.","Choisissez l’objectif et la durée : l’application prépare une séance adaptable.","Wähle Ziel und Dauer: Die App erstellt einen anpassbaren Trainingsplan."); break;
+            case "ALLENAMENTI": v=a("TRAININGS","ENTRENAMIENTOS","ENTRAÎNEMENTS","TRAININGS"); break;
+            case "MINUTI TOTALI": v=a("TOTAL MINUTES","MINUTOS TOTALES","MINUTES TOTALES","MINUTEN GESAMT"); break;
+            case "＋  REGISTRA ALLENAMENTO": v=a("＋  RECORD TRAINING","＋  REGISTRAR ENTRENAMIENTO","＋  ENREGISTRER LA SÉANCE","＋  TRAINING SPEICHERN"); break;
+            case "Ultimo allenamento": v=a("Latest training","Último entrenamiento","Dernier entraînement","Letztes Training"); break;
+            case "⚽  Prepara la prossima seduta": v=a("⚽  Plan the next session","⚽  Prepara la próxima sesión","⚽  Préparer la prochaine séance","⚽  Nächstes Training planen"); break;
+            case "⚽  SUGGERISCI ALLENAMENTO": v=a("⚽  SUGGEST TRAINING","⚽  SUGERIR ENTRENAMIENTO","⚽  SUGGÉRER UNE SÉANCE","⚽  TRAINING VORSCHLAGEN"); break;
+            case "⌂  Home": v=a("⌂  Home","⌂  Inicio","⌂  Accueil","⌂  Start"); break;
+            case "▣  Storico e calendario": v=a("▣  History and calendar","▣  Historial y calendario","▣  Historique et calendrier","▣  Verlauf und Kalender"); break;
+            case "＋  Nuovo allenamento": v=a("＋  New training","＋  Nuevo entrenamiento","＋  Nouvel entraînement","＋  Neues Training"); break;
+            case "♙  Gestione portieri": v=a("♙  Goalkeepers","♙  Gestión de porteros","♙  Gestion des gardiens","♙  Torwartverwaltung"); break;
+            case "⚽  Suggerimenti": v=a("⚽  Suggestions","⚽  Sugerencias","⚽  Suggestions","⚽  Vorschläge"); break;
+            case "↕  Backup e trasferimento": v=a("↕  Backup and transfer","↕  Copia y transferencia","↕  Sauvegarde et transfert","↕  Sicherung und Übertragung"); break;
+            case "?  Istruzioni di utilizzo": v=a("?  Instructions","?  Instrucciones","?  Instructions","?  Anleitung"); break;
+            case "✉  Segnalazioni": v=a("✉  Feedback","✉  Comentarios","✉  Signalements","✉  Rückmeldungen"); break;
+            case "🌐  Lingua": v=a("🌐  Language","🌐  Idioma","🌐  Langue","🌐  Sprache"); break;
+            case "ⓘ  Informazioni": v=a("ⓘ  About","ⓘ  Información","ⓘ  Informations","ⓘ  Informationen"); break;
+            case "Calendario allenamenti": v=a("Training calendar","Calendario de entrenamientos","Calendrier des entraînements","Trainingskalender"); break;
+            case "Filtra gli allenamenti": v=a("Filter trainings","Filtrar entrenamientos","Filtrer les entraînements","Trainings filtern"); break;
+            case "Tutte le tipologie": v=a("All types","Todos los tipos","Tous les types","Alle Typen"); break;
+            case "Tutte le stagioni": v=a("All seasons","Todas las temporadas","Toutes les saisons","Alle Saisons"); break;
+            case "Tutti i portieri": v=a("All goalkeepers","Todos los porteros","Tous les gardiens","Alle Torhüter"); break;
+            case "Reattività": v=a("Reactivity","Reactividad","Réactivité","Reaktion"); break;
+            case "Uscite alte": v=a("High balls","Salidas aéreas","Sorties aériennes","Hohe Bälle"); break;
+            case "Uno contro uno": v=a("One-on-one","Uno contra uno","Un contre un","Eins gegen eins"); break;
+            case "Gioco con i piedi": v=a("Footwork","Juego con los pies","Jeu au pied","Fußspiel"); break;
+            case "Forza e mobilità": v=a("Strength and mobility","Fuerza y movilidad","Force et mobilité","Kraft und Mobilität"); break;
+            case "Altro": v=a("Other","Otro","Autre","Andere"); break;
+            case "APPLICA FILTRI": v=a("APPLY FILTERS","APLICAR FILTROS","APPLIQUER LES FILTRES","FILTER ANWENDEN"); break;
+            case "＋  NUOVO ALLENAMENTO": v=a("＋  NEW TRAINING","＋  NUEVO ENTRENAMIENTO","＋  NOUVEL ENTRAÎNEMENT","＋  NEUES TRAINING"); break;
+            case "VEDI  ▾": v=a("OPEN  ▾","VER  ▾","VOIR  ▾","ÖFFNEN  ▾"); break;
+            case "CHIUDI  ▴": v=a("CLOSE  ▴","CERRAR  ▴","FERMER  ▴","SCHLIESSEN  ▴"); break;
+            case "VEDI SCHEMA ESERCIZI": v=a("VIEW EXERCISE DIAGRAM","VER ESQUEMA","VOIR LE SCHÉMA","ÜBUNGSPLAN ANZEIGEN"); break;
+            case "MODIFICA": v=a("EDIT","EDITAR","MODIFIER","BEARBEITEN"); break;
+            case "ELIMINA": v=a("DELETE","ELIMINAR","SUPPRIMER","LÖSCHEN"); break;
+            case "Nuovo allenamento": v=a("New training","Nuevo entrenamiento","Nouvel entraînement","Neues Training"); break;
+            case "Modifica allenamento": v=a("Edit training","Editar entrenamiento","Modifier l’entraînement","Training bearbeiten"); break;
+            case "Registra quello che avete svolto": v=a("Record what you did","Registra lo realizado","Enregistrez le travail effectué","Durchgeführtes Training erfassen"); break;
+            case "Data": v=a("Date","Fecha","Date","Datum"); break;
+            case "Stagione": v=a("Season","Temporada","Saison","Saison"); break;
+            case "Chi ha fatto l’allenamento": v=a("Participants","Participantes","Participants","Teilnehmer"); break;
+            case "Obiettivo principale": v=a("Main goal","Objetivo principal","Objectif principal","Hauptziel"); break;
+            case "Durata in minuti": v=a("Duration in minutes","Duración en minutos","Durée en minutes","Dauer in Minuten"); break;
+            case "Sequenza degli esercizi": v=a("Exercise sequence","Secuencia de ejercicios","Séquence des exercices","Übungsablauf"); break;
+            case "Note e cose da migliorare (facoltative)": v=a("Notes and improvements (optional)","Notas y mejoras (opcional)","Notes et améliorations (facultatif)","Notizen und Verbesserungen (optional)"); break;
+            case "AGGIUNGI FOTO": v=a("ADD PHOTOS","AÑADIR FOTOS","AJOUTER DES PHOTOS","FOTOS HINZUFÜGEN"); break;
+            case "SALVA ALLENAMENTO": v=a("SAVE TRAINING","GUARDAR ENTRENAMIENTO","ENREGISTRER","TRAINING SPEICHERN"); break;
+            case "SALVA MODIFICHE": v=a("SAVE CHANGES","GUARDAR CAMBIOS","ENREGISTRER LES MODIFICATIONS","ÄNDERUNGEN SPEICHERN"); break;
+            case "Gestione portieri": v=a("Goalkeepers","Gestión de porteros","Gestion des gardiens","Torwartverwaltung"); break;
+            case "＋  AGGIUNGI PORTIERE": v=a("＋  ADD GOALKEEPER","＋  AÑADIR PORTERO","＋  AJOUTER UN GARDIEN","＋  TORWART HINZUFÜGEN"); break;
+            case "Backup e trasferimento": v=a("Backup and transfer","Copia y transferencia","Sauvegarde et transfert","Sicherung und Übertragung"); break;
+            case "Porta i dati su un altro cellulare": v=a("Move data to another phone","Transfiere los datos a otro teléfono","Transférez les données vers un autre téléphone","Daten auf ein anderes Handy übertragen"); break;
+            case "Esporta un file completo con allenamenti, portieri, foto e schemi. Sul nuovo telefono usa Importa backup.": v=a("Export trainings, goalkeepers, photos and diagrams. Use Import backup on the new phone.","Exporta entrenamientos, porteros, fotos y esquemas. Usa Importar copia en el nuevo teléfono.","Exportez entraînements, gardiens, photos et schémas. Utilisez Importer sur le nouveau téléphone.","Exportiere Trainings, Torhüter, Fotos und Pläne. Nutze Backup importieren auf dem neuen Handy."); break;
+            case "ESPORTA BACKUP": v=a("EXPORT BACKUP","EXPORTAR COPIA","EXPORTER LA SAUVEGARDE","BACKUP EXPORTIEREN"); break;
+            case "IMPORTA BACKUP": v=a("IMPORT BACKUP","IMPORTAR COPIA","IMPORTER LA SAUVEGARDE","BACKUP IMPORTIEREN"); break;
+            case "Informazioni": v=a("About","Información","Informations","Informationen"); break;
+            case "Diario, archivio e schemi per le sedute dei portieri.": v=a("Diary, archive and diagrams for goalkeeper training.","Diario, archivo y esquemas para entrenamientos de porteros.","Journal, archives et schémas pour l’entraînement des gardiens.","Tagebuch, Archiv und Pläne für das Torwarttraining."); break;
+            case "‹  Torna alla home": v=a("‹  Back to home","‹  Volver al inicio","‹  Retour à l’accueil","‹  Zurück zur Startseite"); break;
+            case "Lingua": v=a("Language","Idioma","Langue","Sprache"); break;
+            case "Scegli la lingua dell’app": v=a("Choose the app language","Elige el idioma de la aplicación","Choisissez la langue de l’application","App-Sprache auswählen"); break;
+            case "Segnalazioni": v=a("Feedback","Comentarios","Signalements","Rückmeldungen"); break;
+            case "Invia un suggerimento o segnala un problema": v=a("Send a suggestion or report a problem","Envía una sugerencia o informa de un problema","Envoyez une suggestion ou signalez un problème","Vorschlag senden oder Problem melden"); break;
+            case "La tua email": v=a("Your email","Tu correo electrónico","Votre e-mail","Ihre E-Mail"); break;
+            case "Suggerimento": v=a("Suggestion","Sugerencia","Suggestion","Vorschlag"); break;
+            case "Descrivi il suggerimento o il problema": v=a("Describe the suggestion or problem","Describe la sugerencia o el problema","Décrivez la suggestion ou le problème","Beschreiben Sie den Vorschlag oder das Problem"); break;
+            case "INVIA SEGNALAZIONE": v=a("SEND FEEDBACK","ENVIAR","ENVOYER","SENDEN"); break;
+            case "Compila email e descrizione": v=a("Enter email and description","Introduce el correo y la descripción","Saisissez l’e-mail et la description","E-Mail und Beschreibung eingeben"); break;
+            case "Nessuna app email disponibile": v=a("No email app available","No hay aplicación de correo","Aucune application e-mail disponible","Keine E-Mail-App verfügbar"); break;
+            case "Annulla": case "‹  Annulla": v=a("Cancel","Cancelar","Annuler","Abbrechen"); break;
+            case "Salva": v=a("Save","Guardar","Enregistrer","Speichern"); break;
+            case "Chiudi": v=a("Close","Cerrar","Fermer","Schließen"); break;
+            case "Ho capito": v=a("Got it","Entendido","Compris","Verstanden"); break;
+            default: return it;
+        }
+        return "en".equals(language) ? v[0] : "es".equals(language) ? v[1] : "fr".equals(language) ? v[2] : v[3];
+    }
+    private String[] a(String en, String es, String fr, String de) { return new String[]{en,es,fr,de}; }
+
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); v.setElevation(dp(3)); marginBottom(v, 12); return v; }
     private LinearLayout row() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
     private View stat(String title, String value) { LinearLayout v = card(); LinearLayout top = row(); ImageView icon = new ImageView(this); if (title.startsWith("ALLENAMENTI")) icon.setImageResource(R.drawable.ic_allenamento_portieri); else { icon.setImageResource(android.R.drawable.ic_menu_recent_history); icon.setColorFilter(GREEN); } top.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28))); top.addView(space(8)); TextView n = text(value, 27, TEXT, true); top.addView(n); v.addView(top); TextView l = text(title, 11, MUTED, true); l.setPadding(0, dp(6), 0, 0); v.addView(l); return v; }
     private TextView section(String s) { TextView v = text(s, 19, NAVY, true); v.setPadding(dp(2), dp(22), 0, dp(11)); return v; }
     private TextView label(String s) { TextView v = text(s, 14, NAVY, true); v.setPadding(dp(2), dp(14), 0, dp(6)); return v; }
     private TextView empty(String s) { TextView v = text(s, 15, MUTED, false); v.setGravity(Gravity.CENTER); v.setPadding(dp(18), dp(28), dp(18), dp(28)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
-    private TextView text(String s, int sp, int color, boolean bold) { TextView v = new TextView(this); v.setText(s); v.setTextSize(sp); v.setTextColor(color == NAVY ? TEXT : color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
+    private TextView text(String s, int sp, int color, boolean bold) { TextView v = new TextView(this); v.setText(tr(s)); v.setTextSize(sp); v.setTextColor(color == NAVY ? TEXT : color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
     private TextView pill(String s, int bg, int fg) { TextView v = text(s, 12, fg, true); v.setPadding(dp(10), dp(5), dp(10), dp(5)); v.setBackground(round(bg, 30, Color.TRANSPARENT, 0)); return v; }
     private TextView inputDisplay(String s) { TextView v = text(s, 16, TEXT, false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
-    private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(TEXT); v.setHintTextColor(MUTED); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
-    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(15); t.setTextColor(TEXT); t.setGravity(Gravity.CENTER_VERTICAL); t.setPadding(dp(13), 0, dp(13), 0); t.setMinHeight(dp(46)); return t; }}; v.setAdapter(adapter); v.setMinimumHeight(0); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), 0, dp(30), 0); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(48))); return v; }
+    private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(tr(hint)); v.setTextSize(16); v.setTextColor(TEXT); v.setHintTextColor(MUTED); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
+    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { private TextView style(int p, View c, ViewGroup parent, boolean dropdown) { TextView t = (TextView)(dropdown ? super.getDropDownView(p, c, parent) : super.getView(p, c, parent)); t.setText(tr(getItem(p))); t.setTextSize(15); t.setTextColor(dropdown ? Color.rgb(15, 38, 54) : TEXT); t.setGravity(Gravity.CENTER_VERTICAL); t.setPadding(dp(13), 0, dp(13), 0); t.setMinHeight(dp(46)); return t; } @Override public View getView(int p, View c, ViewGroup parent) { return style(p,c,parent,false); } @Override public View getDropDownView(int p, View c, ViewGroup parent) { return style(p,c,parent,true); }}; v.setAdapter(adapter); v.setMinimumHeight(0); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), 0, dp(30), 0); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(48))); return v; }
     private Button primary(String s) { Button b = button(s); b.setTextColor(Color.rgb(2, 35, 35)); b.setBackground(rippleTech(GREEN, Color.rgb(31, 218, 255))); b.setMinHeight(dp(54)); b.setElevation(dp(8)); return b; }
     private Button secondary(String s) { Button b = button(s); b.setTextColor(TEXT); b.setBackground(rippleRound(SURFACE, 12, CYAN, 1)); b.setMinHeight(dp(50)); return b; }
     private Button smallButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(9, 49, 67), 9, Color.rgb(31, 143, 177), 1)); return b; }
     private Button link(String s) { Button b = button(s); b.setTextColor(GREEN); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(55, 38, 242, 173)), null, null)); return b; }
     private Button inputButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(rippleRound(SURFACE, 10, CYAN, 1)); return b; }
-    private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(14); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setAllCaps(false); return b; }
+    private Button button(String s) { Button b = new Button(this); b.setText(tr(s)); b.setTextSize(14); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setAllCaps(false); return b; }
     private ImageView trainingPhoto(String uri, int height) {
         ImageView v = new ImageView(this);
         v.setLayoutParams(new LinearLayout.LayoutParams(dp(180), dp(height)));
@@ -1046,6 +1150,7 @@ public class MainActivity extends Activity {
     private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, -2, 1); }
     private void marginTop(View v, int n) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.setMargins(0, dp(n), 0, 0); v.setLayoutParams(p); }
     private void marginBottom(View v, int n) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.setMargins(0, 0, 0, dp(n)); v.setLayoutParams(p); }
+    private void filterMargin(View v) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(48)); p.setMargins(0, dp(8), 0, 0); v.setLayoutParams(p); }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
 
     private void pickPhoto() {
