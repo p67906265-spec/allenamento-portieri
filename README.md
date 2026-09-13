@@ -26,3 +26,10 @@ App Android offline per registrare le giornate di allenamento dei portieri e pre
 - salvataggio locale sul telefono, senza account e senza Internet.
 
 La compilazione APK parte automaticamente con GitHub Actions a ogni caricamento su `main`.
+
+## Firma permanente
+
+La workflow produce esclusivamente l'APK release firmato. La chiave è conservata nei
+segreti GitHub e non deve mai essere caricata nel repository. Conservare sempre una
+copia sicura del pacchetto `Allenamento_Portieri_Firma_Permanente.zip`: senza quella
+chiave non sarà possibile pubblicare aggiornamenti installabili sulla versione precedente.

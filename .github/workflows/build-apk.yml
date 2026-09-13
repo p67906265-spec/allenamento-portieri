@@ -15,12 +15,34 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Compila APK debug
+      - name: Verifica segreti della firma
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          test -n "$SIGNING_KEYSTORE_BASE64"
+          test -n "$SIGNING_STORE_PASSWORD"
+          test -n "$SIGNING_KEY_ALIAS"
+          test -n "$SIGNING_KEY_PASSWORD"
+      - name: Ricrea la firma permanente
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/allenamento-portieri-release.jks"
+      - name: Compila APK release firmato
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/allenamento-portieri-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk Allenamento-Portieri-v1.5-release.apk
       - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v1.4-lista-portieri
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Allenamento-Portieri-v1.5-release-firmato
+          path: Allenamento-Portieri-v1.5-release.apk
           if-no-files-found: error
