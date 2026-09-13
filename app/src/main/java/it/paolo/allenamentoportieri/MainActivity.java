@@ -55,6 +55,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -83,7 +85,8 @@ public class MainActivity extends Activity {
     private static final int PICK_PHOTO = 40;
     private static final int EXPORT_BACKUP = 41;
     private static final int IMPORT_BACKUP = 42;
-    private static final String REPORT_EMAIL = "p67906265@gmail.com";
+    private static final String REPORT_URL = "https://script.google.com/macros/s/AKfycbzj44wDBpIFxIbDipNGgdGzcAD7pRGnJ_G9VTN5jJ3Nl18yxAdQvCPS0N-qQZkukPnKwA/exec";
+    private static final String REPORT_TOKEN = "8bfa288c5a57590e1335f4b7ebb5317360fb8aa092ff8ccb";
     private final SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd", Locale.ITALY);
     private final SimpleDateFormat pretty = new SimpleDateFormat("EEEE d MMMM yyyy", Locale.ITALY);
     private final List<Session> sessions = new ArrayList<>();
@@ -99,6 +102,7 @@ public class MainActivity extends Activity {
     private String historySeasonFilter = "Tutte le stagioni";
     private String historyPersonFilter = "Tutti i portieri";
     private final ExecutorService backupExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private String language = "it";
 
     @Override public void onCreate(Bundle state) {
@@ -218,10 +222,33 @@ public class MainActivity extends Activity {
     private void showReports() {
         homeVisible = false; base("Segnalazioni", "Invia un suggerimento o segnala un problema");
         EditText sender = input("La tua email", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS); content.addView(sender);
-        String[] types = {"Suggerimento", "Bug"}; Spinner type = spinner(types); marginTop(type, 9); content.addView(type);
+        final String[] selectedType = {"Suggerimento"}; LinearLayout types = row(); marginTop(types, 10);
+        Button suggestion = smallButton("SUGGERIMENTO"); Button bug = smallButton("BUG"); types.addView(suggestion, weight()); types.addView(space(8)); types.addView(bug, weight()); content.addView(types);
+        setReportTypeButtons(suggestion, bug, false);
+        suggestion.setOnClickListener(v -> { selectedType[0] = "Suggerimento"; setReportTypeButtons(suggestion, bug, false); });
+        bug.setOnClickListener(v -> { selectedType[0] = "Bug"; setReportTypeButtons(suggestion, bug, true); });
         EditText message = input("Descrivi il suggerimento o il problema", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE); message.setMinLines(6); marginTop(message, 9); content.addView(message);
         Button send = primary("INVIA SEGNALAZIONE"); marginTop(send, 14); content.addView(send);
-        send.setOnClickListener(v -> { String from = sender.getText().toString().trim(), body = message.getText().toString().trim(); if (from.isEmpty() || body.isEmpty()) { Toast.makeText(this, tr("Compila email e descrizione"), Toast.LENGTH_SHORT).show(); return; } String subject = "Allenamento Portieri - " + type.getSelectedItem(); String mailBody = "Email utente: " + from + "\n\n" + body; Intent email = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + REPORT_EMAIL + "?subject=" + Uri.encode(subject) + "&body=" + Uri.encode(mailBody))); try { startActivity(email); } catch (Exception e) { Toast.makeText(this, tr("Nessuna app email disponibile"), Toast.LENGTH_LONG).show(); } });
+        send.setOnClickListener(v -> { String from = sender.getText().toString().trim(), body = message.getText().toString().trim(); if (from.isEmpty() || body.isEmpty()) { Toast.makeText(this, tr("Compila email e descrizione"), Toast.LENGTH_SHORT).show(); return; } sendReport(send, selectedType[0], from, body); });
+    }
+
+    private void setReportTypeButtons(Button suggestion, Button bug, boolean bugSelected) {
+        suggestion.setTextColor(bugSelected ? TEXT : Color.rgb(2, 35, 35)); suggestion.setBackground(bugSelected ? rippleRound(SURFACE, 10, CYAN, 1) : rippleTech(GREEN, CYAN));
+        bug.setTextColor(bugSelected ? Color.rgb(2, 35, 35) : TEXT); bug.setBackground(bugSelected ? rippleTech(GREEN, CYAN) : rippleRound(SURFACE, 10, CYAN, 1));
+    }
+
+    private void sendReport(Button send, String type, String email, String message) {
+        send.setEnabled(false); send.setText(tr("INVIO IN CORSO…"));
+        networkExecutor.execute(() -> {
+            boolean ok = false; String result = tr("Invio non riuscito. Controlla la connessione."); HttpURLConnection connection = null;
+            try {
+                JSONObject data = new JSONObject(); data.put("token", REPORT_TOKEN); data.put("tipo", type); data.put("email", email); data.put("messaggio", message);
+                byte[] bytes = data.toString().getBytes("UTF-8"); connection = (HttpURLConnection)new URL(REPORT_URL).openConnection(); connection.setConnectTimeout(15000); connection.setReadTimeout(20000); connection.setInstanceFollowRedirects(true); connection.setRequestMethod("POST"); connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8"); connection.setDoOutput(true);
+                try (OutputStream out = connection.getOutputStream()) { out.write(bytes); }
+                int code = connection.getResponseCode(); ok = code >= 200 && code < 400; result = ok ? tr("Segnalazione inviata") : tr("Invio non riuscito. Riprova più tardi.");
+            } catch (Exception ignored) { } finally { if (connection != null) connection.disconnect(); }
+            boolean sent = ok; String finalResult = result; runOnUiThread(() -> { send.setEnabled(true); send.setText(tr("INVIA SEGNALAZIONE")); Toast.makeText(this, finalResult, Toast.LENGTH_LONG).show(); if (sent) showHome(); });
+        });
     }
 
     private void showBackupPanel() {
@@ -373,15 +400,15 @@ public class MainActivity extends Activity {
         Button previous = smallButton("‹");
         previous.setTextSize(22);
         previous.setOnClickListener(v -> { historyMonth.add(Calendar.MONTH, -1); selectedHistoryDate = null; renderCalendar(); });
-        monthBar.addView(previous, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        monthBar.addView(previous, new LinearLayout.LayoutParams(dp(44), dp(40)));
         SimpleDateFormat monthFormat = new SimpleDateFormat("MMMM yyyy", appLocale());
         TextView month = text(capitalize(monthFormat.format(historyMonth.getTime())), 19, NAVY, true);
         month.setGravity(Gravity.CENTER);
-        monthBar.addView(month, weight());
+        monthBar.addView(month, new LinearLayout.LayoutParams(0, dp(40), 1));
         Button next = smallButton("›");
         next.setTextSize(22);
         next.setOnClickListener(v -> { historyMonth.add(Calendar.MONTH, 1); selectedHistoryDate = null; renderCalendar(); });
-        monthBar.addView(next, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        monthBar.addView(next, new LinearLayout.LayoutParams(dp(44), dp(40)));
         calendarCard.addView(monthBar);
 
         GridLayout grid = new GridLayout(this);
@@ -406,9 +433,9 @@ public class MainActivity extends Activity {
             LinearLayout cell = new LinearLayout(this);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER);
-            cell.setPadding(dp(2), dp(5), dp(2), dp(4));
+            cell.setPadding(dp(2), dp(2), dp(2), dp(2));
             cell.setBackground(selected ? techGradient(Color.rgb(8, 92, 82), Color.rgb(5, 48, 65), Color.rgb(118, 255, 213), 3) : trained ? round(Color.TRANSPARENT, 30, GREEN, 2) : round(Color.TRANSPARENT, 10, Color.TRANSPARENT, 0));
-            TextView number = text(String.valueOf(day), 15, selected ? Color.WHITE : NAVY, selected || trained);
+            TextView number = text(String.valueOf(day), 14, selected ? Color.WHITE : NAVY, selected || trained);
             number.setGravity(Gravity.CENTER);
             cell.addView(number, new LinearLayout.LayoutParams(-1, -1));
             cell.setOnClickListener(v -> { selectedHistoryDate = key; renderCalendar(); });
@@ -439,7 +466,7 @@ public class MainActivity extends Activity {
     private GridLayout.LayoutParams gridCell() {
         GridLayout.LayoutParams p = new GridLayout.LayoutParams();
         p.width = 0;
-        p.height = dp(48);
+        p.height = dp(38);
         p.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
         p.setMargins(dp(1), dp(1), dp(1), dp(1));
         return p;
@@ -1050,8 +1077,14 @@ public class MainActivity extends Activity {
             case "Invia un suggerimento o segnala un problema": v=a("Send a suggestion or report a problem","Envía una sugerencia o informa de un problema","Envoyez une suggestion ou signalez un problème","Vorschlag senden oder Problem melden"); break;
             case "La tua email": v=a("Your email","Tu correo electrónico","Votre e-mail","Ihre E-Mail"); break;
             case "Suggerimento": v=a("Suggestion","Sugerencia","Suggestion","Vorschlag"); break;
+            case "SUGGERIMENTO": v=a("SUGGESTION","SUGERENCIA","SUGGESTION","VORSCHLAG"); break;
+            case "BUG": v=a("BUG","ERROR","BUG","FEHLER"); break;
             case "Descrivi il suggerimento o il problema": v=a("Describe the suggestion or problem","Describe la sugerencia o el problema","Décrivez la suggestion ou le problème","Beschreiben Sie den Vorschlag oder das Problem"); break;
             case "INVIA SEGNALAZIONE": v=a("SEND FEEDBACK","ENVIAR","ENVOYER","SENDEN"); break;
+            case "INVIO IN CORSO…": v=a("SENDING…","ENVIANDO…","ENVOI…","WIRD GESENDET…"); break;
+            case "Segnalazione inviata": v=a("Feedback sent","Mensaje enviado","Signalement envoyé","Rückmeldung gesendet"); break;
+            case "Invio non riuscito. Controlla la connessione.": v=a("Could not send. Check your connection.","No se pudo enviar. Comprueba la conexión.","Échec de l’envoi. Vérifiez la connexion.","Senden fehlgeschlagen. Verbindung prüfen."); break;
+            case "Invio non riuscito. Riprova più tardi.": v=a("Could not send. Try again later.","No se pudo enviar. Inténtalo más tarde.","Échec de l’envoi. Réessayez plus tard.","Senden fehlgeschlagen. Später erneut versuchen."); break;
             case "Compila email e descrizione": v=a("Enter email and description","Introduce el correo y la descripción","Saisissez l’e-mail et la description","E-Mail und Beschreibung eingeben"); break;
             case "Nessuna app email disponibile": v=a("No email app available","No hay aplicación de correo","Aucune application e-mail disponible","Keine E-Mail-App verfügbar"); break;
             case "Annulla": case "‹  Annulla": v=a("Cancel","Cancelar","Annuler","Abbrechen"); break;
@@ -1074,7 +1107,7 @@ public class MainActivity extends Activity {
     private TextView pill(String s, int bg, int fg) { TextView v = text(s, 12, fg, true); v.setPadding(dp(10), dp(5), dp(10), dp(5)); v.setBackground(round(bg, 30, Color.TRANSPARENT, 0)); return v; }
     private TextView inputDisplay(String s) { TextView v = text(s, 16, TEXT, false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
     private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(tr(hint)); v.setTextSize(16); v.setTextColor(TEXT); v.setHintTextColor(MUTED); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
-    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { private TextView style(int p, View c, ViewGroup parent, boolean dropdown) { TextView t = (TextView)(dropdown ? super.getDropDownView(p, c, parent) : super.getView(p, c, parent)); t.setText(tr(getItem(p))); t.setTextSize(15); t.setTextColor(dropdown ? Color.rgb(15, 38, 54) : TEXT); t.setGravity(Gravity.CENTER_VERTICAL); t.setPadding(dp(13), 0, dp(13), 0); t.setMinHeight(dp(46)); return t; } @Override public View getView(int p, View c, ViewGroup parent) { return style(p,c,parent,false); } @Override public View getDropDownView(int p, View c, ViewGroup parent) { return style(p,c,parent,true); }}; v.setAdapter(adapter); v.setMinimumHeight(0); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), 0, dp(30), 0); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(48))); return v; }
+    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { private TextView style(int p, View c, ViewGroup parent, boolean dropdown) { TextView t = (TextView)(dropdown ? super.getDropDownView(p, c, parent) : super.getView(p, c, parent)); t.setText(tr(getItem(p))); t.setTextSize(15); t.setTextColor(TEXT); t.setGravity(Gravity.CENTER_VERTICAL); t.setPadding(dp(13), 0, dp(13), 0); t.setMinHeight(dp(46)); if (dropdown) t.setBackgroundColor(Color.rgb(7, 47, 65)); return t; } @Override public View getView(int p, View c, ViewGroup parent) { return style(p,c,parent,false); } @Override public View getDropDownView(int p, View c, ViewGroup parent) { return style(p,c,parent,true); }}; v.setAdapter(adapter); v.setPopupBackgroundDrawable(round(Color.rgb(7, 47, 65), 8, CYAN, 1)); v.setMinimumHeight(0); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), 0, dp(30), 0); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(48))); return v; }
     private Button primary(String s) { Button b = button(s); b.setTextColor(Color.rgb(2, 35, 35)); b.setBackground(rippleTech(GREEN, Color.rgb(31, 218, 255))); b.setMinHeight(dp(54)); b.setElevation(dp(8)); return b; }
     private Button secondary(String s) { Button b = button(s); b.setTextColor(TEXT); b.setBackground(rippleRound(SURFACE, 12, CYAN, 1)); b.setMinHeight(dp(50)); return b; }
     private Button smallButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(9, 49, 67), 9, Color.rgb(31, 143, 177), 1)); return b; }
