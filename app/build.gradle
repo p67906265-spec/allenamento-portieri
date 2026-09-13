@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def signingStoreFile = System.getenv('SIGNING_STORE_FILE')
+def signingStorePassword = System.getenv('SIGNING_STORE_PASSWORD')
+def signingKeyAlias = System.getenv('SIGNING_KEY_ALIAS')
+def signingKeyPassword = System.getenv('SIGNING_KEY_PASSWORD')
+def hasReleaseSigning = signingStoreFile && signingStorePassword && signingKeyAlias && signingKeyPassword
+
 android {
     namespace 'it.paolo.allenamentoportieri'
     compileSdk 35
@@ -8,9 +14,20 @@ android {
         applicationId 'it.paolo.allenamentoportieri'
         minSdk 24
         targetSdk 35
-        versionCode 14
-        versionName '2.3'
+        versionCode 15
+        versionName '2.4'
         manifestPlaceholders = [appLabel: 'Allenamento Portieri']
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(signingStoreFile)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -20,6 +37,7 @@ android {
             manifestPlaceholders = [appLabel: 'Allenamento Portieri TEST']
         }
         release {
+            if (hasReleaseSigning) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

@@ -15,12 +15,29 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Compila APK debug
+      - name: Prepara firma permanente
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          test -n "$SIGNING_KEY"
+          test -n "$SIGNING_STORE_PASSWORD"
+          test -n "$SIGNING_KEY_ALIAS"
+          test -n "$SIGNING_KEY_PASSWORD"
+          printf '%s' "$SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/allenamento-portieri-release.jks"
+      - name: Compila APK release firmato
+        env:
+          SIGNING_STORE_FILE: ${{ runner.temp }}/allenamento-portieri-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
       - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v2.3-home-pulita
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Allenamento-Portieri-v2.4-release-firmato
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
