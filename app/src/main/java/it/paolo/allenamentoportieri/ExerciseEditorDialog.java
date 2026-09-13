@@ -98,7 +98,7 @@ public class ExerciseEditorDialog extends Dialog {
         root.addView(pager);
 
         description = text("", 14, Color.rgb(55, 72, 86), false);
-        description.setMaxLines(3);
+        description.setMaxLines(6);
         description.setPadding(dp(16), dp(3), dp(16), dp(8));
         root.addView(description);
 
@@ -189,8 +189,17 @@ public class ExerciseEditorDialog extends Dialog {
     private void showCurrent() {
         if (board == null) return;
         counter.setText("Esercizio " + (current + 1) + " di " + descriptions.size());
-        description.setText(descriptions.get(current));
+        description.setText(numberedPhases(descriptions.get(current)));
         board.setState(states.get(current));
+    }
+
+    private String numberedPhases(String value) {
+        String[] parts = value.split("[;]+");
+        int useful = 0; for (String part : parts) if (!part.trim().isEmpty()) useful++;
+        if (useful < 2) return value;
+        StringBuilder out = new StringBuilder(); int number = 1;
+        for (String part : parts) if (!part.trim().isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(number++).append(". ").append(part.trim()); }
+        return out.toString();
     }
 
     private void saveAndClose() {
@@ -273,27 +282,31 @@ public class ExerciseEditorDialog extends Dialog {
 
             if (mentionsPost) {
                 float lastX = startX, lastY = startY;
+                float firstPostX = 0f;
                 int created = 0;
+                int ballOrder = 1;
                 String[] phases = d.split("(?:\\bpoi\\b|\\bdopodich[eé]\\b|\\bdopo\\b|\\bquindi\\b|\\bsuccessivamente\\b|[,.;]+)");
                 for (String phase : phases) {
                     if (!(phase.contains("palo") || phase.contains("centro") || phase.contains("destr") || phase.contains("sinistr") || phase.contains("avanti") || phase.contains("indietro"))) continue;
                     float targetX = lastX, targetY = lastY;
-                    if (phase.contains("contrario") || phase.contains("opposto") || phase.contains("altro palo")) { targetX = lastX < .5f ? .74f : .26f; targetY = .79f; }
+                    boolean movement = phase.contains("scatt") || phase.contains("spost") || phase.contains("va ") || phase.startsWith("va") || phase.contains("chiud") || phase.contains("ritorn") || phase.contains("corre") || phase.contains("parte");
+                    boolean save = phase.contains("parat") || phase.contains("presa") || phase.contains("blocca") || phase.contains("intervento");
+                    if (phase.contains("secondo palo") || phase.contains("contrario") || phase.contains("opposto") || phase.contains("altro palo")) { float reference = firstPostX == 0f ? lastX : firstPostX; targetX = reference < .5f ? .74f : .26f; targetY = .79f; }
+                    else if (phase.contains("primo palo")) { if (firstPostX == 0f) firstPostX = lastX == .50f ? .26f : lastX; targetX = firstPostX; targetY = .79f; }
                     else if (phase.contains("palo destro") || phase.contains("verso destra") || phase.contains("a destra")) { targetX = .74f; targetY = .79f; }
                     else if (phase.contains("palo sinistro") || phase.contains("verso sinistra") || phase.contains("a sinistra")) { targetX = .26f; targetY = .79f; }
-                    else if (phase.contains("palo")) { targetX = lastX == .50f ? .26f : (lastX < .5f ? .74f : .26f); targetY = .79f; }
+                    else if (phase.contains("palo")) { if (firstPostX == 0f) firstPostX = lastX == .50f ? .26f : lastX; targetX = firstPostX; targetY = .79f; }
                     else if (phase.contains("centro")) { targetX = .50f; targetY = .82f; }
                     if (phase.contains("avanti")) targetY = .48f;
                     if (phase.contains("indietro") || phase.contains("arretra") || phase.contains("ritorna")) targetY = .82f;
-                    if (Math.abs(targetX - lastX) > .01f || Math.abs(targetY - lastY) > .01f) {
+                    if (movement && (Math.abs(targetX - lastX) > .01f || Math.abs(targetY - lastY) > .01f)) {
                         s.items.add(new DiagramItem("move", lastX, lastY, targetX, targetY));
                         created++;
-                        if (phase.contains("presa") || phase.contains("palla")) s.items.add(new DiagramItem("ball", targetX, targetY));
                         lastX = targetX; lastY = targetY;
                     }
+                    if (save) { DiagramItem ball = new DiagramItem("ball", targetX, targetY); ball.order = ballOrder++; s.items.add(ball); }
                 }
                 if (created == 0) { lastX = .26f; lastY = .79f; s.items.add(new DiagramItem("move", startX, startY, lastX, lastY)); }
-                if ((d.contains("presa") || d.contains("palla")) && created > 0) s.items.add(new DiagramItem("ball", lastX, lastY));
                 if (hasCoach) {
                     s.items.add(new DiagramItem("coach", .50f, .18f));
                     s.items.add(new DiagramItem("ball", .50f, .25f));
@@ -351,6 +364,7 @@ public class ExerciseEditorDialog extends Dialog {
         private AnimatorSet movementAnimator;
         private boolean showingMovement;
         private float animatedKeeperX, animatedKeeperY;
+        private int activeMovementOrder;
 
         DiagramCanvas(Context context) { super(context); setBackgroundColor(Color.rgb(229, 239, 233)); }
         void setState(DiagramState state) { stopMovement(); this.state = state; normalizeMovementOrders(); selected = null; tool = null; invalidate(); }
@@ -379,6 +393,7 @@ public class ExerciseEditorDialog extends Dialog {
             Collections.sort(movements, (a, b) -> Integer.compare(a.order, b.order));
             stopMovement();
             showingMovement = true;
+            activeMovementOrder = 1;
             animatedKeeperX = movements.get(0).x;
             animatedKeeperY = movements.get(0).y;
             List<Animator> stages = new ArrayList<>();
@@ -386,6 +401,7 @@ public class ExerciseEditorDialog extends Dialog {
                 ValueAnimator stage = ValueAnimator.ofFloat(0f, 1f);
                 stage.setDuration(900L);
                 stage.addUpdateListener(animation -> {
+                    activeMovementOrder = move.order;
                     float part = (float) animation.getAnimatedValue();
                     animatedKeeperX = move.x + (move.x2 - move.x) * part;
                     animatedKeeperY = move.y + (move.y2 - move.y) * part;
@@ -397,7 +413,7 @@ public class ExerciseEditorDialog extends Dialog {
             movementAnimator.playSequentially(stages);
             movementAnimator.start();
         }
-        private void stopMovement() { if (movementAnimator != null) movementAnimator.cancel(); movementAnimator = null; showingMovement = false; }
+        private void stopMovement() { if (movementAnimator != null) movementAnimator.cancel(); movementAnimator = null; showingMovement = false; activeMovementOrder = 0; }
         private int movementCount() { int count = 0; for (DiagramItem item : state.items) if (item.type.equals("move")) count++; return count; }
         private void normalizeMovementOrders() {
             List<DiagramItem> moves = new ArrayList<>();
@@ -438,6 +454,7 @@ public class ExerciseEditorDialog extends Dialog {
                 if (item.type.equals("move")) drawOrder(c, (x + x2) / 2f, (y + y2) / 2f, item.order);
                 return;
             }
+            if (item.type.equals("ball") && showingMovement && item.order > 0 && item.order != activeMovementOrder) return;
             if (item.type.equals("keeper") && showingMovement) { x = sx(animatedKeeperX); y = sy(animatedKeeperY); }
             c.save();
             c.rotate(item.rotation, x, y);
@@ -447,7 +464,8 @@ public class ExerciseEditorDialog extends Dialog {
                     p.setColor(Color.rgb(29, 79, 160)); c.drawCircle(x, y, size * 1.15f, p);
                     p.setColor(Color.WHITE); p.setTextSize(size * 1.35f); p.setTypeface(Typeface.DEFAULT_BOLD); p.setTextAlign(Paint.Align.CENTER); c.drawText("P", x, y + size * .48f, p); break;
                 case "ball":
-                    p.setColor(Color.WHITE); c.drawCircle(x, y, size * .72f, p); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(1)); p.setColor(Color.DKGRAY); c.drawCircle(x, y, size * .72f, p); break;
+                    p.setColor(Color.WHITE); c.drawCircle(x, y, size * .80f, p); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(1)); p.setColor(Color.DKGRAY); c.drawCircle(x, y, size * .80f, p);
+                    if (item.order > 0) { p.setStyle(Paint.Style.FILL); p.setColor(NAVY); p.setTextSize(size * .90f); p.setTypeface(Typeface.DEFAULT_BOLD); p.setTextAlign(Paint.Align.CENTER); c.drawText(String.valueOf(item.order), x, y + size * .32f, p); } break;
                 case "cone":
                     p.setColor(Color.rgb(255, 145, 35)); Path cone = new Path(); cone.moveTo(x, y - size); cone.lineTo(x - size * .75f, y + size); cone.lineTo(x + size * .75f, y + size); cone.close(); c.drawPath(cone, p); break;
                 case "pole":
