@@ -107,16 +107,27 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(PAGE);
 
         LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.VERTICAL);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(20), dp(18), dp(20), dp(16));
         head.setBackgroundColor(NAVY);
+        Button menu = button("☰");
+        menu.setTextSize(25);
+        menu.setTextColor(Color.WHITE);
+        menu.setBackgroundColor(Color.TRANSPARENT);
+        menu.setPadding(0, 0, dp(14), 0);
+        menu.setOnClickListener(v -> showMainMenu());
+        head.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(54)));
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
         TextView t = text(title, 25, Color.WHITE, true);
-        head.addView(t);
+        titles.addView(t);
         if (subtitle != null && !subtitle.isEmpty()) {
             TextView st = text(subtitle, 14, Color.rgb(202, 219, 231), false);
             st.setPadding(0, dp(4), 0, 0);
-            head.addView(st);
+            titles.addView(st);
         }
+        head.addView(titles, weight());
         root.addView(head);
 
         ScrollView scroll = new ScrollView(this);
@@ -126,6 +137,45 @@ public class MainActivity extends Activity {
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+    }
+
+    private void showMainMenu() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Allenamento Portieri").setView(panel).setNegativeButton("Chiudi", null).create();
+        addMenuItem(panel, "⌂  Home", dialog, this::showHome);
+        addMenuItem(panel, "▣  Storico e calendario", dialog, this::showHistory);
+        addMenuItem(panel, "＋  Nuovo allenamento", dialog, () -> showEditor(null));
+        addMenuItem(panel, "♙  Gestione portieri", dialog, this::showGoalkeepers);
+        addMenuItem(panel, "⚽  Suggerimenti", dialog, this::showPlanner);
+        addMenuItem(panel, "↕  Backup e trasferimento", dialog, this::showBackupPanel);
+        addMenuItem(panel, "?  Istruzioni di utilizzo", dialog, this::showInstructions);
+        addMenuItem(panel, "ⓘ  Informazioni", dialog, this::showAbout);
+        dialog.setOnShowListener(v -> tint(dialog));
+        dialog.show();
+    }
+
+    private void addMenuItem(LinearLayout panel, String label, AlertDialog dialog, Runnable action) {
+        Button item = secondary(label); item.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        item.setOnClickListener(v -> { dialog.dismiss(); action.run(); });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48)); lp.setMargins(0, 0, 0, dp(6)); panel.addView(item, lp);
+    }
+
+    private void showInstructions() {
+        String message = "1. Crea la lista dei portieri.\n\n2. Registra una seduta indicando data, durata, partecipanti ed esercizi.\n\n3. Scrivi un esercizio per riga oppure separa le fasi con il punto e virgola (;).\n\n4. Apri Schemi esercizi per disegnare o correggere ogni esercizio. Trascina gli estremi delle frecce per cambiarne direzione.\n\n5. Consulta lo storico dal calendario e usa i filtri.\n\n6. Esporta periodicamente un backup per trasferire o conservare i dati.";
+        tint(new AlertDialog.Builder(this).setTitle("Istruzioni di utilizzo").setMessage(message).setPositiveButton("Ho capito", null).show());
+    }
+
+    private void showAbout() {
+        tint(new AlertDialog.Builder(this).setTitle("Allenamento Portieri").setMessage("Diario, archivio e schemi per le sedute dei portieri.\n\nPaolo Free 1.0").setPositiveButton("Chiudi", null).show());
+    }
+
+    private void showBackupPanel() {
+        homeVisible = false; base("Backup e trasferimento", "Porta i dati su un altro cellulare");
+        content.addView(text("Esporta un file completo con allenamenti, portieri, foto e schemi. Sul nuovo telefono usa Importa backup.", 15, MUTED, false));
+        Button export = primary("ESPORTA BACKUP"); export.setOnClickListener(v -> exportBackup()); marginTop(export, 18); content.addView(export);
+        Button importButton = secondary("IMPORTA BACKUP"); importButton.setOnClickListener(v -> importBackup()); marginTop(importButton, 10); content.addView(importButton);
     }
 
     private void showHome() {
@@ -380,8 +430,13 @@ public class MainActivity extends Activity {
 
     private View sessionCard(Session s) {
         LinearLayout card = card();
-        TextView date = text(formatDate(s.date), 16, NAVY, true);
-        card.addView(date);
+        LinearLayout summary = row();
+        LinearLayout summaryText = new LinearLayout(this); summaryText.setOrientation(LinearLayout.VERTICAL);
+        TextView date = text(formatDate(s.date), 16, NAVY, true); summaryText.addView(date);
+        TextView shortInfo = text(s.goal + (!s.participants.trim().isEmpty() ? "  ·  " + s.participants.replace("\n", ", ") : ""), 13, MUTED, false);
+        shortInfo.setMaxLines(1); summaryText.addView(shortInfo); summary.addView(summaryText, weight());
+        Button toggle = smallButton("VEDI  ▾"); summary.addView(toggle, new LinearLayout.LayoutParams(dp(82), dp(44))); card.addView(summary);
+        LinearLayout details = new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setVisibility(View.GONE);
         LinearLayout badgeRow = row();
         TextView goal = pill(s.goal, GREEN, Color.WHITE);
         badgeRow.addView(goal);
@@ -390,30 +445,30 @@ public class MainActivity extends Activity {
         dp.setMargins(dp(8), 0, 0, 0);
         badgeRow.addView(duration, dp);
         marginTop(badgeRow, 9);
-        card.addView(badgeRow);
+        details.addView(badgeRow);
         TextView season = text("Stagione " + s.season, 13, MUTED, true);
         season.setPadding(0, dp(8), 0, 0);
-        card.addView(season);
+        details.addView(season);
         if (!s.participants.trim().isEmpty()) {
             TextView people = text("Portieri: " + s.participants.replace("\n", ", "), 14, NAVY, true);
             people.setPadding(0, dp(6), 0, 0);
-            card.addView(people);
+            details.addView(people);
         }
         if (!s.work.trim().isEmpty()) {
             TextView work = text(numberedExercises(s.work), 15, Color.rgb(35, 55, 70), false);
             work.setPadding(0, dp(11), 0, 0);
-            card.addView(work);
+            details.addView(work);
             Button diagram = smallButton("VEDI SCHEMA ESERCIZI");
             diagram.setOnClickListener(v -> showDiagram(s));
             marginTop(diagram, 10);
-            card.addView(diagram);
+            details.addView(diagram);
         }
         if (!s.notes.trim().isEmpty()) {
             TextView notes = text("Note: " + s.notes, 14, MUTED, false);
             notes.setPadding(0, dp(8), 0, 0);
-            card.addView(notes);
+            details.addView(notes);
         }
-        if (!s.photoUris.isEmpty()) card.addView(photoGallery(s.photoUris, 130));
+        if (!s.photoUris.isEmpty()) details.addView(photoGallery(s.photoUris, 130));
         LinearLayout actions = row();
         Button edit = smallButton("MODIFICA");
         edit.setOnClickListener(v -> showEditor(s));
@@ -424,7 +479,10 @@ public class MainActivity extends Activity {
         delete.setOnClickListener(v -> confirmDelete(s));
         actions.addView(delete, weight());
         marginTop(actions, 10);
-        card.addView(actions);
+        details.addView(actions);
+        card.addView(details);
+        toggle.setOnClickListener(v -> { boolean open = details.getVisibility() == View.VISIBLE; details.setVisibility(open ? View.GONE : View.VISIBLE); toggle.setText(open ? "VEDI  ▾" : "CHIUDI  ▴"); });
+        summary.setOnClickListener(v -> toggle.performClick());
         return card;
     }
 

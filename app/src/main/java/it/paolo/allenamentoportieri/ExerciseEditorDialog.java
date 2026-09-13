@@ -102,50 +102,45 @@ public class ExerciseEditorDialog extends Dialog {
         description.setPadding(dp(16), dp(3), dp(16), dp(8));
         root.addView(description);
 
-        TextView hint = text("Scegli uno strumento, poi tocca il campo. Trascina gli elementi per spostarli.", 12, Color.rgb(80, 96, 108), false);
+        TextView hint = text("Apri una categoria, scegli lo strumento e poi tocca il campo.", 12, Color.rgb(80, 96, 108), false);
         hint.setPadding(dp(16), 0, dp(16), dp(7));
         root.addView(hint);
 
-        HorizontalScrollView toolsScroll = new HorizontalScrollView(getContext());
-        toolsScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout tools = row();
-        tools.setPadding(dp(10), 0, dp(10), dp(8));
-        addTool(tools, "Portiere", "keeper");
-        addTool(tools, "Palla", "ball");
-        addTool(tools, "Cono", "cone");
-        addTool(tools, "Paletto", "pole");
-        addTool(tools, "Ostacolo", "hurdle");
-        addTool(tools, "Sagoma", "dummy");
-        addTool(tools, "Mister", "coach");
-        addTool(tools, "Giocatore", "player");
-        addTool(tools, "Scaletta", "ladder");
-        addTool(tools, "Porta", "goal");
-        addTool(tools, "Freccia", "arrow");
-        addTool(tools, "Movimento P", "move");
-        addTool(tools, "Tiro", "shot");
-        addTool(tools, "Fase 1", "step1");
-        addTool(tools, "Fase 2", "step2");
-        addTool(tools, "Fase 3", "step3");
-        toolsScroll.addView(tools);
+        LinearLayout categoryBar = row(); categoryBar.setPadding(dp(10), 0, dp(10), dp(6));
+        Button peopleCategory = categoryButton("PERSONE E PALLONI", Color.rgb(49, 105, 170));
+        Button equipmentCategory = categoryButton("ATTREZZATURA", Color.rgb(218, 139, 34));
+        Button movementCategory = categoryButton("MOVIMENTI", Color.rgb(21, 151, 113));
+        categoryBar.addView(peopleCategory, new LinearLayout.LayoutParams(0, dp(42), 1));
+        LinearLayout.LayoutParams middle = new LinearLayout.LayoutParams(0, dp(42), 1); middle.setMargins(dp(5), 0, dp(5), 0); categoryBar.addView(equipmentCategory, middle);
+        categoryBar.addView(movementCategory, new LinearLayout.LayoutParams(0, dp(42), 1)); root.addView(categoryBar);
+
+        HorizontalScrollView toolsScroll = new HorizontalScrollView(getContext()); toolsScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout tools = row(); tools.setPadding(dp(10), 0, dp(10), dp(8)); toolsScroll.addView(tools);
         root.addView(toolsScroll, new LinearLayout.LayoutParams(-1, dp(58)));
+        Runnable showPeople = () -> fillTools(tools, new String[][]{{"Portiere","keeper"},{"Mister","coach"},{"Giocatore","player"},{"Palla","ball"}});
+        peopleCategory.setOnClickListener(v -> showPeople.run());
+        equipmentCategory.setOnClickListener(v -> fillTools(tools, new String[][]{{"Cono","cone"},{"Paletto","pole"},{"Ostacolo","hurdle"},{"Sagoma","dummy"},{"Scaletta","ladder"},{"Porta","goal"}}));
+        movementCategory.setOnClickListener(v -> fillTools(tools, new String[][]{{"Freccia","arrow"},{"Movimento P","move"},{"Tiro","shot"},{"Fase 1","step1"},{"Fase 2","step2"},{"Fase 3","step3"}}));
+        showPeople.run();
 
         board = new DiagramCanvas(getContext());
         root.addView(board, new LinearLayout.LayoutParams(-1, dp(215)));
 
-        HorizontalScrollView commandsScroll = new HorizontalScrollView(getContext());
-        commandsScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout commands = row();
-        commands.setPadding(dp(10), dp(8), dp(10), dp(10));
+        HorizontalScrollView commandsScroll = new HorizontalScrollView(getContext()); commandsScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout commands = row(); commands.setPadding(dp(10), dp(8), dp(10), dp(7));
         addCommand(commands, "▶ Avvia", v -> { board.playMovement(); });
         addCommand(commands, "Annulla", v -> { board.state.undo(); board.invalidate(); });
         addCommand(commands, "Elimina", v -> { board.deleteSelected(); });
-        addCommand(commands, "Ruota 90°", v -> { board.rotateSelected(); });
-        addCommand(commands, "Ordine −", v -> { board.changeSelectedOrder(-1); });
-        addCommand(commands, "Ordine +", v -> { board.changeSelectedOrder(1); });
-        addCommand(commands, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
-        addCommand(commands, "Ricrea automazione", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
+        Button more = compactColor("ALTRE AZIONI  ▾", Color.rgb(72, 92, 112)); commands.addView(more, new LinearLayout.LayoutParams(-2, dp(48)));
         commandsScroll.addView(commands);
-        root.addView(commandsScroll, new LinearLayout.LayoutParams(-1, dp(68)));
+        root.addView(commandsScroll, new LinearLayout.LayoutParams(-1, dp(63)));
+        HorizontalScrollView extraScroll = new HorizontalScrollView(getContext()); extraScroll.setHorizontalScrollBarEnabled(false); extraScroll.setVisibility(View.GONE);
+        LinearLayout extra = row(); extra.setPadding(dp(10), 0, dp(10), dp(8));
+        addCommand(extra, "Ruota 90°", v -> board.rotateSelected()); addCommand(extra, "Ordine −", v -> board.changeSelectedOrder(-1));
+        addCommand(extra, "Ordine +", v -> board.changeSelectedOrder(1)); addCommand(extra, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
+        addCommand(extra, "Ricrea automazione", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
+        extraScroll.addView(extra); root.addView(extraScroll, new LinearLayout.LayoutParams(-1, dp(56)));
+        more.setOnClickListener(v -> { boolean open = extraScroll.getVisibility() == View.VISIBLE; extraScroll.setVisibility(open ? View.GONE : View.VISIBLE); more.setText(open ? "ALTRE AZIONI  ▾" : "ALTRE AZIONI  ▴"); });
 
         setContentView(root);
         showCurrent();
@@ -169,6 +164,11 @@ public class ExerciseEditorDialog extends Dialog {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(46));
         lp.setMargins(0, 0, dp(7), 0);
         target.addView(b, lp);
+    }
+
+    private void fillTools(LinearLayout target, String[][] entries) {
+        target.removeAllViews();
+        for (String[] entry : entries) addTool(target, entry[0], entry[1]);
     }
 
     private void addCommand(LinearLayout target, String label, View.OnClickListener action) {
@@ -245,6 +245,8 @@ public class ExerciseEditorDialog extends Dialog {
     private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(getContext()); v.setText(value); v.setTextSize(size); v.setTextColor(color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
     private Button button(String value) { Button b = new Button(getContext()); b.setText(value); b.setTextSize(14); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setBackgroundColor(Color.TRANSPARENT); return b; }
     private Button compact(String value) { Button b = button(value); b.setTextColor(NAVY); b.setPadding(dp(14), 0, dp(14), 0); b.setBackground(rounded(Color.WHITE, Color.rgb(195, 208, 216))); return b; }
+    private Button categoryButton(String value, int color) { Button b = compactColor(value, color); b.setTextSize(10); b.setPadding(dp(4), 0, dp(4), 0); return b; }
+    private Button compactColor(String value, int color) { Button b = button(value); b.setTextColor(Color.WHITE); b.setPadding(dp(12), 0, dp(12), 0); b.setBackground(rounded(color, color)); return b; }
     private GradientDrawable rounded(int fill, int stroke) { GradientDrawable d = new GradientDrawable(); d.setColor(fill); d.setCornerRadius(dp(10)); d.setStroke(dp(1), stroke); return d; }
     private int dp(int value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
 
