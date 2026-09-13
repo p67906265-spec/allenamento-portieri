@@ -104,7 +104,21 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("goalkeeper_training", MODE_PRIVATE);
         load();
         loadGoalkeepers();
-        showHome();
+        showSportTechIntro();
+    }
+
+    private void showSportTechIntro() {
+        FrameLayout splash = new FrameLayout(this); splash.setBackgroundResource(R.drawable.bg_sport_tech);
+        LinearLayout center = new LinearLayout(this); center.setOrientation(LinearLayout.VERTICAL); center.setGravity(Gravity.CENTER); center.setPadding(dp(20), 0, dp(20), 0);
+        ImageView keeper = new ImageView(this); keeper.setImageResource(R.drawable.header_keeper_sport_tech); keeper.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        keeper.setAlpha(0f); keeper.setTranslationX(-dp(260)); keeper.setRotation(-8f); keeper.setScaleX(.72f); keeper.setScaleY(.72f);
+        center.addView(keeper, new LinearLayout.LayoutParams(-1, dp(245)));
+        TextView title = text("ALLENAMENTO PORTIERI", 27, TEXT, true); title.setGravity(Gravity.CENTER); title.setAlpha(0f); title.setLetterSpacing(.06f); center.addView(title);
+        TextView motto = text("ALLENAMENTO  •  DISCIPLINA  •  RISULTATI", 11, GREEN, true); motto.setGravity(Gravity.CENTER); motto.setPadding(0, dp(9), 0, 0); motto.setAlpha(0f); center.addView(motto);
+        splash.addView(center, new FrameLayout.LayoutParams(-1, -1)); setContentView(splash);
+        keeper.post(() -> keeper.animate().alpha(1f).translationX(0).rotation(0).scaleX(1f).scaleY(1f).setDuration(950).withEndAction(() -> {
+            title.animate().alpha(1f).setDuration(350).start(); motto.animate().alpha(1f).setDuration(500).withEndAction(() -> splash.postDelayed(() -> splash.animate().alpha(0f).setDuration(350).withEndAction(this::showHome).start(), 600)).start();
+        }).start());
     }
 
     private void base(String title, String subtitle) {
@@ -374,7 +388,7 @@ public class MainActivity extends Activity {
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER);
             cell.setPadding(dp(2), dp(5), dp(2), dp(4));
-            cell.setBackground(round(selected ? NAVY : Color.TRANSPARENT, 10, Color.TRANSPARENT, 0));
+            cell.setBackground(selected ? techGradient(Color.rgb(8, 78, 79), Color.rgb(5, 48, 65), GREEN, 2) : round(Color.TRANSPARENT, 10, Color.TRANSPARENT, 0));
             TextView number = text(String.valueOf(day), 15, selected ? Color.WHITE : NAVY, selected || trained);
             number.setGravity(Gravity.CENTER);
             cell.addView(number, new LinearLayout.LayoutParams(-1, dp(24)));
@@ -956,7 +970,7 @@ public class MainActivity extends Activity {
     private TextView pill(String s, int bg, int fg) { TextView v = text(s, 12, fg, true); v.setPadding(dp(10), dp(5), dp(10), dp(5)); v.setBackground(round(bg, 30, Color.TRANSPARENT, 0)); return v; }
     private TextView inputDisplay(String s) { TextView v = text(s, 16, TEXT, false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
     private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(TEXT); v.setHintTextColor(MUTED); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
-    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(16); t.setTextColor(TEXT); t.setPadding(dp(13), dp(13), dp(13), dp(13)); return t; }}; v.setAdapter(adapter); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), dp(13), dp(30), dp(13)); return v; }
+    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(15); t.setTextColor(TEXT); t.setGravity(Gravity.CENTER_VERTICAL); t.setPadding(dp(13), 0, dp(13), 0); t.setMinHeight(dp(46)); return t; }}; v.setAdapter(adapter); v.setMinimumHeight(0); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), 0, dp(30), 0); v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(48))); return v; }
     private Button primary(String s) { Button b = button(s); b.setTextColor(Color.rgb(2, 35, 35)); b.setBackground(rippleTech(GREEN, Color.rgb(31, 218, 255))); b.setMinHeight(dp(54)); b.setElevation(dp(8)); return b; }
     private Button secondary(String s) { Button b = button(s); b.setTextColor(TEXT); b.setBackground(rippleRound(SURFACE, 12, CYAN, 1)); b.setMinHeight(dp(50)); return b; }
     private Button smallButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(9, 49, 67), 9, Color.rgb(31, 143, 177), 1)); return b; }
