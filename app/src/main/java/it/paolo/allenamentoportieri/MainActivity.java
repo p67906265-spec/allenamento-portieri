@@ -22,6 +22,9 @@ import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -107,13 +110,18 @@ public class MainActivity extends Activity {
     private void base(String title, String subtitle) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(techPageBackground());
+        root.setBackgroundResource(R.drawable.bg_sport_tech);
+
+        FrameLayout headFrame = new FrameLayout(this);
+        headFrame.setBackground(techGradient(Color.rgb(4, 27, 46), Color.rgb(5, 54, 65), CYAN, 1));
+        ImageView athlete = new ImageView(this); athlete.setImageResource(R.drawable.header_keeper_sport_tech); athlete.setScaleType(ImageView.ScaleType.CENTER_CROP); athlete.setAlpha(.42f);
+        FrameLayout.LayoutParams athleteLp = new FrameLayout.LayoutParams(dp(145), dp(82), Gravity.RIGHT | Gravity.CENTER_VERTICAL); headFrame.addView(athlete, athleteLp);
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(20), dp(18), dp(20), dp(16));
-        head.setBackground(techGradient(Color.rgb(4, 27, 46), Color.rgb(5, 54, 65), CYAN, 1));
+        head.setBackgroundColor(Color.TRANSPARENT);
         Button menu = button("☰");
         menu.setTextSize(25);
         menu.setTextColor(Color.WHITE);
@@ -124,6 +132,7 @@ public class MainActivity extends Activity {
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         TextView t = text(title, 25, Color.WHITE, true);
+        if ("Allenamento Portieri".equals(title)) { SpannableString styled = new SpannableString(title); styled.setSpan(new ForegroundColorSpan(GREEN), 12, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE); t.setText(styled); }
         titles.addView(t);
         if (subtitle != null && !subtitle.isEmpty()) {
             TextView st = text(subtitle, 14, Color.rgb(202, 219, 231), false);
@@ -131,7 +140,8 @@ public class MainActivity extends Activity {
             titles.addView(st);
         }
         head.addView(titles, weight());
-        root.addView(head);
+        headFrame.addView(head, new FrameLayout.LayoutParams(-1, -2));
+        root.addView(headFrame);
 
         ScrollView scroll = new ScrollView(this);
         content = new LinearLayout(this);
@@ -147,8 +157,9 @@ public class MainActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(16), dp(16), dp(16), dp(8));
         panel.setBackground(techGradient(SURFACE, Color.rgb(4, 27, 43), CYAN, 1));
-        TextView menuTitle = text("ALLENAMENTO PORTIERI", 21, TEXT, true); menuTitle.setPadding(dp(4), dp(3), 0, dp(14)); panel.addView(menuTitle);
-        AlertDialog dialog = new AlertDialog.Builder(this).setView(panel).setNegativeButton("CHIUDI", null).create();
+        LinearLayout menuHead = row(); TextView menuTitle = text("ALLENAMENTO PORTIERI", 21, TEXT, true); menuHead.addView(menuTitle, weight()); Button closeMenu = smallButton("✕"); menuHead.addView(closeMenu, new LinearLayout.LayoutParams(dp(48), dp(44))); panel.addView(menuHead);
+        TextView motto = text("ALLENAMENTO  •  DISCIPLINA  •  RISULTATI", 10, GREEN, true); motto.setPadding(dp(2), 0, 0, dp(14)); panel.addView(motto);
+        AlertDialog dialog = new AlertDialog.Builder(this).setView(panel).create(); closeMenu.setOnClickListener(v -> dialog.dismiss());
         addMenuItem(panel, "⌂  Home", dialog, this::showHome);
         addMenuItem(panel, "▣  Storico e calendario", dialog, this::showHistory);
         addMenuItem(panel, "＋  Nuovo allenamento", dialog, () -> showEditor(null));
@@ -162,9 +173,10 @@ public class MainActivity extends Activity {
     }
 
     private void addMenuItem(LinearLayout panel, String label, AlertDialog dialog, Runnable action) {
-        Button item = secondary(label); item.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        LinearLayout item = row(); item.setPadding(dp(15), 0, dp(12), 0); item.setBackground(rippleRound(Color.rgb(7, 47, 65), 12, Color.rgb(26, 121, 151), 1));
+        TextView name = text(label, 15, TEXT, true); item.addView(name, weight()); TextView arrow = text("›", 27, GREEN, false); item.addView(arrow);
         item.setOnClickListener(v -> { dialog.dismiss(); action.run(); });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48)); lp.setMargins(0, 0, 0, dp(6)); panel.addView(item, lp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(52)); lp.setMargins(0, 0, 0, dp(7)); panel.addView(item, lp);
     }
 
     private void showInstructions() {
@@ -206,14 +218,15 @@ public class MainActivity extends Activity {
             content.addView(sessionCard(sorted.get(0)));
         }
 
-        TextView plan = section("Prepara la prossima seduta");
-        content.addView(plan);
+        LinearLayout planCard = card(); marginTop(planCard, 8);
+        TextView plan = text("⚽  Prepara la prossima seduta", 19, TEXT, true);
+        planCard.addView(plan);
         TextView copy = text("Scegli obiettivo e durata: l’app prepara una proposta completa che puoi adattare e salvare.", 15, MUTED, false);
-        copy.setPadding(dp(2), 0, dp(2), dp(12));
-        content.addView(copy);
+        copy.setPadding(dp(2), dp(10), dp(2), dp(12));
+        planCard.addView(copy);
         Button ideas = secondary("⚽  SUGGERISCI ALLENAMENTO");
         ideas.setOnClickListener(v -> showPlanner());
-        content.addView(ideas);
+        planCard.addView(ideas); content.addView(planCard);
 
     }
 
@@ -935,7 +948,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); v.setElevation(dp(3)); marginBottom(v, 12); return v; }
     private LinearLayout row() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
-    private View stat(String title, String value) { LinearLayout v = card(); TextView n = text(value, 27, NAVY, true); TextView l = text(title, 11, MUTED, true); l.setPadding(0, dp(3), 0, 0); v.addView(n); v.addView(l); return v; }
+    private View stat(String title, String value) { LinearLayout v = card(); LinearLayout top = row(); ImageView icon = new ImageView(this); if (title.startsWith("ALLENAMENTI")) icon.setImageResource(R.drawable.ic_allenamento_portieri); else { icon.setImageResource(android.R.drawable.ic_menu_recent_history); icon.setColorFilter(GREEN); } top.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28))); top.addView(space(8)); TextView n = text(value, 27, TEXT, true); top.addView(n); v.addView(top); TextView l = text(title, 11, MUTED, true); l.setPadding(0, dp(6), 0, 0); v.addView(l); return v; }
     private TextView section(String s) { TextView v = text(s, 19, NAVY, true); v.setPadding(dp(2), dp(22), 0, dp(11)); return v; }
     private TextView label(String s) { TextView v = text(s, 14, NAVY, true); v.setPadding(dp(2), dp(14), 0, dp(6)); return v; }
     private TextView empty(String s) { TextView v = text(s, 15, MUTED, false); v.setGravity(Gravity.CENTER); v.setPadding(dp(18), dp(28), dp(18), dp(28)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
@@ -944,7 +957,7 @@ public class MainActivity extends Activity {
     private TextView inputDisplay(String s) { TextView v = text(s, 16, TEXT, false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
     private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(TEXT); v.setHintTextColor(MUTED); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
     private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(16); t.setTextColor(TEXT); t.setPadding(dp(13), dp(13), dp(13), dp(13)); return t; }}; v.setAdapter(adapter); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), dp(13), dp(30), dp(13)); return v; }
-    private Button primary(String s) { Button b = button(s); b.setTextColor(Color.rgb(2, 35, 35)); b.setBackground(rippleTech(GREEN, Color.rgb(31, 218, 255))); b.setMinHeight(dp(54)); return b; }
+    private Button primary(String s) { Button b = button(s); b.setTextColor(Color.rgb(2, 35, 35)); b.setBackground(rippleTech(GREEN, Color.rgb(31, 218, 255))); b.setMinHeight(dp(54)); b.setElevation(dp(8)); return b; }
     private Button secondary(String s) { Button b = button(s); b.setTextColor(TEXT); b.setBackground(rippleRound(SURFACE, 12, CYAN, 1)); b.setMinHeight(dp(50)); return b; }
     private Button smallButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(9, 49, 67), 9, Color.rgb(31, 143, 177), 1)); return b; }
     private Button link(String s) { Button b = button(s); b.setTextColor(GREEN); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(55, 38, 242, 173)), null, null)); return b; }

@@ -69,7 +69,7 @@ public class ExerciseEditorDialog extends Dialog {
         super.onCreate(state);
         LinearLayout root = new LinearLayout(getContext());
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(techGradient(PAGE, Color.rgb(4, 32, 45), 0, 0));
+        root.setBackgroundResource(R.drawable.bg_sport_tech);
 
         LinearLayout header = row();
         header.setPadding(dp(10), dp(8), dp(10), dp(8));
