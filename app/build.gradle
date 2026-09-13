@@ -1,7 +1,5 @@
 apply plugin: 'com.android.application'
 
-def signingKeystorePath = System.getenv('SIGNING_KEYSTORE_PATH')
-
 android {
     namespace 'it.paolo.allenamentoportieri'
     compileSdk 35
@@ -10,24 +8,18 @@ android {
         applicationId 'it.paolo.allenamentoportieri'
         minSdk 24
         targetSdk 35
-        versionCode 6
-        versionName '1.5'
-    }
-
-    signingConfigs {
-        release {
-            if (signingKeystorePath) {
-                storeFile file(signingKeystorePath)
-                storePassword System.getenv('SIGNING_STORE_PASSWORD')
-                keyAlias System.getenv('SIGNING_KEY_ALIAS')
-                keyPassword System.getenv('SIGNING_KEY_PASSWORD')
-            }
-        }
+        versionCode 7
+        versionName '1.6'
+        manifestPlaceholders = [appLabel: 'Allenamento Portieri']
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix '.test'
+            versionNameSuffix '-test'
+            manifestPlaceholders = [appLabel: 'Allenamento Portieri TEST']
+        }
         release {
-            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

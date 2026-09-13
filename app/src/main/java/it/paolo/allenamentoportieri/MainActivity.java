@@ -228,7 +228,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < sessions.size(); i++) {
             Session s = sessions.get(i); List<String> names = splitPeople(s.participants); boolean changed = false;
             for (int p = 0; p < names.size(); p++) if (names.get(p).equals(oldName)) { names.set(p, newName); changed = true; }
-            if (changed) sessions.set(i, new Session(s.id, s.date, s.goal, s.minutes, s.work, s.notes, s.season, joinLines(names), new ArrayList<>(s.photoUris)));
+            if (changed) sessions.set(i, new Session(s.id, s.date, s.goal, s.minutes, s.work, s.notes, s.season, joinLines(names), new ArrayList<>(s.photoUris), new ArrayList<>(s.diagrams)));
         }
     }
 
@@ -404,7 +404,7 @@ public class MainActivity extends Activity {
             work.setPadding(0, dp(11), 0, 0);
             card.addView(work);
             Button diagram = smallButton("VEDI SCHEMA ESERCIZI");
-            diagram.setOnClickListener(v -> showDiagram(s.work));
+            diagram.setOnClickListener(v -> showDiagram(s));
             marginTop(diagram, 10);
             card.addView(diagram);
         }
@@ -530,7 +530,7 @@ public class MainActivity extends Activity {
             String selectedPeople = collectSelectedGoalkeepers(participantFields);
             if (selectedPeople.isEmpty()) { Toast.makeText(this, "Seleziona almeno un portiere", Toast.LENGTH_SHORT).show(); return; }
             if (editing) sessions.remove(existing);
-            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), String.valueOf(season.getSelectedItem()), selectedPeople, new ArrayList<>(editorPhotoUris)));
+            sessions.add(new Session(editing ? existing.id : System.currentTimeMillis(), dateValue[0], String.valueOf(goal.getSelectedItem()), mins, work.getText().toString().trim(), notes.getText().toString().trim(), String.valueOf(season.getSelectedItem()), selectedPeople, new ArrayList<>(editorPhotoUris), editing ? new ArrayList<>(existing.diagrams) : new ArrayList<>()));
             save();
             Toast.makeText(this, editing ? "Allenamento aggiornato" : "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -624,7 +624,7 @@ public class MainActivity extends Activity {
         save.setOnClickListener(v -> {
             String selectedPeople = collectSelectedGoalkeepers(participantFields);
             if (selectedPeople.isEmpty()) { Toast.makeText(this, "Seleziona almeno un portiere", Toast.LENGTH_SHORT).show(); return; }
-            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), currentSeason, selectedPeople, new ArrayList<>(editorPhotoUris)));
+            sessions.add(new Session(System.currentTimeMillis(), today, goalValue, mins, work.getText().toString().trim(), notes.getText().toString().trim(), currentSeason, selectedPeople, new ArrayList<>(editorPhotoUris), new ArrayList<>()));
             save();
             Toast.makeText(this, "Allenamento salvato", Toast.LENGTH_SHORT).show();
             showHome();
@@ -694,7 +694,8 @@ public class MainActivity extends Activity {
                 if (savedPhotos != null) for (int p = 0; p < savedPhotos.length(); p++) if (!savedPhotos.optString(p).isEmpty()) photos.add(savedPhotos.optString(p));
                 else if (!o.optString("photoUri").isEmpty()) photos.add(o.optString("photoUri"));
                 String savedDate = o.optString("date");
-                sessions.add(new Session(o.optLong("id", i), savedDate, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(savedDate)), o.optString("participants"), photos));
+                List<String> diagrams = jsonStrings(o.optJSONArray("diagrams"));
+                sessions.add(new Session(o.optLong("id", i), savedDate, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(savedDate)), o.optString("participants"), photos, diagrams));
             }
         } catch (JSONException ignored) {}
     }
@@ -714,7 +715,8 @@ public class MainActivity extends Activity {
             JSONObject o = new JSONObject();
             try {
                 o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("season", s.season); o.put("participants", s.participants);
-                JSONArray photos = new JSONArray(); for (String uri : s.photoUris) photos.put(uri); o.put("photoUris", photos); a.put(o);
+                JSONArray photos = new JSONArray(); for (String uri : s.photoUris) photos.put(uri); o.put("photoUris", photos);
+                JSONArray diagrams = new JSONArray(); for (String value : s.diagrams) diagrams.put(value); o.put("diagrams", diagrams); a.put(o);
             }
             catch (JSONException ignored) {}
         }
@@ -758,8 +760,9 @@ public class MainActivity extends Activity {
                     }
                     o.put("backupPhotos", photoNames); data.put(o);
                 }
-                JSONObject backup = new JSONObject(); backup.put("version", 2); backup.put("sessions", data);
+                JSONObject backup = new JSONObject(); backup.put("version", 3); backup.put("sessions", data);
                 JSONArray rosterJson = new JSONArray(); for (String name : roster) rosterJson.put(name); backup.put("goalkeepers", rosterJson);
+                backup.put("diagramTemplates", getSharedPreferences("exercise_diagram_library", MODE_PRIVATE).getString("templates", "{}"));
                 zip.putNextEntry(new ZipEntry("data.json"));
                 zip.write(backup.toString().getBytes("UTF-8"));
                 zip.closeEntry();
@@ -780,6 +783,7 @@ public class MainActivity extends Activity {
             String error = null;
             List<Session> newSessions = new ArrayList<>();
             List<String> newRosterNames = new ArrayList<>();
+            String importedDiagramTemplates = null;
             int imported = 0;
             try (InputStream raw = getContentResolver().openInputStream(source); ZipInputStream zip = new ZipInputStream(raw)) {
                 ZipEntry entry;
@@ -797,7 +801,7 @@ public class MainActivity extends Activity {
                 }
                 if (json == null) throw new Exception("File dati non trovato");
                 JSONArray a; JSONArray importedRoster = null;
-                if (json.trim().startsWith("[")) a = new JSONArray(json); else { JSONObject root = new JSONObject(json); a = root.optJSONArray("sessions"); importedRoster = root.optJSONArray("goalkeepers"); }
+                if (json.trim().startsWith("[")) a = new JSONArray(json); else { JSONObject root = new JSONObject(json); a = root.optJSONArray("sessions"); importedRoster = root.optJSONArray("goalkeepers"); importedDiagramTemplates = root.optString("diagramTemplates", null); }
                 if (a == null) throw new Exception("Elenco allenamenti non trovato");
                 if (importedRoster != null) for (int r = 0; r < importedRoster.length(); r++) { String name = importedRoster.optString(r).trim(); if (!name.isEmpty()) newRosterNames.add(name); }
                 for (int i = 0; i < a.length(); i++) {
@@ -805,11 +809,12 @@ public class MainActivity extends Activity {
                     if (names != null) for (int p = 0; p < names.length(); p++) { String uri = importedPhotos.get(names.optString(p)); if (uri != null) photos.add(uri); }
                     long id = o.optLong("id", System.currentTimeMillis() + i);
                     String date = o.optString("date", iso.format(new Date()));
-                    newSessions.add(new Session(id, date, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(date)), o.optString("participants"), photos));
+                    newSessions.add(new Session(id, date, o.optString("goal", GOALS[0]), o.optInt("minutes", 60), o.optString("work"), o.optString("notes"), o.optString("season", seasonForDate(date)), o.optString("participants"), photos, jsonStrings(o.optJSONArray("diagrams"))));
                     imported++;
                 }
             } catch (Exception e) { error = "Backup non valido: " + e.getMessage(); }
             String finalError = error;
+            String finalDiagramTemplates = importedDiagramTemplates;
             int finalImported = imported;
             runOnUiThread(() -> {
                 progress.dismiss();
@@ -819,6 +824,7 @@ public class MainActivity extends Activity {
                 for (Session s : newSessions) { removeSessionById(s.id); sessions.add(s); }
                 for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!goalkeepers.contains(name)) goalkeepers.add(name);
                 Collections.sort(goalkeepers, String.CASE_INSENSITIVE_ORDER); saveGoalkeepers();
+                if (finalDiagramTemplates != null && !finalDiagramTemplates.isEmpty()) getSharedPreferences("exercise_diagram_library", MODE_PRIVATE).edit().putString("templates", finalDiagramTemplates).apply();
                 save();
                 Toast.makeText(this, finalImported + " allenamenti importati", Toast.LENGTH_LONG).show();
                 showHome();
@@ -846,7 +852,8 @@ public class MainActivity extends Activity {
         return new AlertDialog.Builder(this).setView(box).setCancelable(false).show();
     }
 
-    private JSONObject sessionJson(Session s) throws JSONException { JSONObject o = new JSONObject(); o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("season", s.season); o.put("participants", s.participants); return o; }
+    private JSONObject sessionJson(Session s) throws JSONException { JSONObject o = new JSONObject(); o.put("id", s.id); o.put("date", s.date); o.put("goal", s.goal); o.put("minutes", s.minutes); o.put("work", s.work); o.put("notes", s.notes); o.put("season", s.season); o.put("participants", s.participants); JSONArray diagrams = new JSONArray(); for (String value : s.diagrams) diagrams.put(value); o.put("diagrams", diagrams); return o; }
+    private List<String> jsonStrings(JSONArray values) { List<String> result = new ArrayList<>(); if (values != null) for (int i = 0; i < values.length(); i++) result.add(values.optString(i)); return result; }
     private void removeSessionById(long id) { for (int i = sessions.size() - 1; i >= 0; i--) if (sessions.get(i).id == id) sessions.remove(i); }
     private void copy(InputStream in, OutputStream out) throws Exception { byte[] buffer = new byte[16384]; int n; while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n); }
 
@@ -870,11 +877,16 @@ public class MainActivity extends Activity {
     private String collectSelectedGoalkeepers(LinearLayout container) { List<String> names = new ArrayList<>(); for (int i = 0; i < container.getChildCount(); i++) if (container.getChildAt(i) instanceof CheckBox) { CheckBox check = (CheckBox) container.getChildAt(i); if (check.isChecked()) names.add(check.getText().toString()); } return joinLines(names); }
     private String joinLines(List<String> names) { StringBuilder out = new StringBuilder(); for (String name : names) { if (out.length() > 0) out.append("\n"); out.append(name); } return out.toString(); }
 
-    private void showDiagram(String description) {
-        ExerciseDiagramView diagram = new ExerciseDiagramView(this, description);
-        int height = dp(390);
-        diagram.setLayoutParams(new LinearLayout.LayoutParams(-1, height));
-        tint(new AlertDialog.Builder(this).setTitle("Schema automatico dell’esercizio").setView(diagram).setMessage("Schema indicativo creato dalle parole della descrizione.").setPositiveButton("Chiudi", null).show());
+    private void showDiagram(Session session) {
+        List<String> descriptions = new ArrayList<>();
+        for (String raw : session.work.split("\\n+")) if (!raw.trim().isEmpty()) descriptions.add(raw.trim());
+        if (descriptions.isEmpty()) return;
+        new ExerciseEditorDialog(this, descriptions, session.diagrams, saved -> {
+            session.diagrams.clear();
+            session.diagrams.addAll(saved);
+            save();
+            Toast.makeText(this, descriptions.size() == 1 ? "Schema salvato" : descriptions.size() + " schemi salvati", Toast.LENGTH_SHORT).show();
+        }).show();
     }
 
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(round(Color.WHITE, 14, Color.rgb(222, 230, 235), 1)); v.setElevation(dp(2)); marginBottom(v, 12); return v; }
@@ -1006,7 +1018,7 @@ public class MainActivity extends Activity {
     }
 
     static class Session {
-        final long id; final String date, goal, work, notes, season, participants; final int minutes; final List<String> photoUris;
-        Session(long id, String date, String goal, int minutes, String work, String notes, String season, String participants, List<String> photoUris) { this.id = id; this.date = date; this.goal = goal; this.minutes = minutes; this.work = work; this.notes = notes; this.season = season; this.participants = participants == null ? "" : participants; this.photoUris = photoUris == null ? new ArrayList<>() : photoUris; }
+        final long id; final String date, goal, work, notes, season, participants; final int minutes; final List<String> photoUris, diagrams;
+        Session(long id, String date, String goal, int minutes, String work, String notes, String season, String participants, List<String> photoUris, List<String> diagrams) { this.id = id; this.date = date; this.goal = goal; this.minutes = minutes; this.work = work; this.notes = notes; this.season = season; this.participants = participants == null ? "" : participants; this.photoUris = photoUris == null ? new ArrayList<>() : photoUris; this.diagrams = diagrams == null ? new ArrayList<>() : diagrams; }
     }
 }
