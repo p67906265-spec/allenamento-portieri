@@ -3,6 +3,8 @@
     <application
         android:allowBackup="true"
         android:fullBackupContent="true"
+        android:icon="@drawable/ic_allenamento_portieri"
+        android:roundIcon="@drawable/ic_allenamento_portieri"
         android:label="${appLabel}"
         android:theme="@style/AppTheme">
         <activity

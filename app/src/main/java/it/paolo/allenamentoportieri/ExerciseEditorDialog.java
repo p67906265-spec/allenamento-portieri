@@ -118,7 +118,7 @@ public class ExerciseEditorDialog extends Dialog {
         root.addView(toolsScroll, new LinearLayout.LayoutParams(-1, dp(58)));
 
         board = new DiagramCanvas(getContext());
-        root.addView(board, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(board, new LinearLayout.LayoutParams(-1, dp(215)));
 
         HorizontalScrollView commandsScroll = new HorizontalScrollView(getContext());
         commandsScroll.setHorizontalScrollBarEnabled(false);
@@ -126,6 +126,7 @@ public class ExerciseEditorDialog extends Dialog {
         commands.setPadding(dp(10), dp(8), dp(10), dp(10));
         addCommand(commands, "Annulla", v -> { board.state.undo(); board.invalidate(); });
         addCommand(commands, "Elimina", v -> { board.deleteSelected(); });
+        addCommand(commands, "Ruota 90°", v -> { board.rotateSelected(); });
         addCommand(commands, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
         addCommand(commands, "Ricrea bozza", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
         commandsScroll.addView(commands);
@@ -226,10 +227,11 @@ public class ExerciseEditorDialog extends Dialog {
     private static class DiagramItem {
         String type;
         float x, y, x2, y2;
+        int rotation;
         DiagramItem(String type, float x, float y) { this.type = type; this.x = x; this.y = y; this.x2 = x; this.y2 = y; }
         DiagramItem(String type, float x, float y, float x2, float y2) { this.type = type; this.x = x; this.y = y; this.x2 = x2; this.y2 = y2; }
-        JSONObject json() throws Exception { JSONObject o = new JSONObject(); o.put("type", type); o.put("x", x); o.put("y", y); o.put("x2", x2); o.put("y2", y2); return o; }
-        static DiagramItem from(JSONObject o) { return new DiagramItem(o.optString("type"), (float)o.optDouble("x", .5), (float)o.optDouble("y", .5), (float)o.optDouble("x2", .5), (float)o.optDouble("y2", .5)); }
+        JSONObject json() throws Exception { JSONObject o = new JSONObject(); o.put("type", type); o.put("x", x); o.put("y", y); o.put("x2", x2); o.put("y2", y2); o.put("rotation", rotation); return o; }
+        static DiagramItem from(JSONObject o) { DiagramItem item = new DiagramItem(o.optString("type"), (float)o.optDouble("x", .5), (float)o.optDouble("y", .5), (float)o.optDouble("x2", .5), (float)o.optDouble("y2", .5)); item.rotation = o.optInt("rotation", 0); return item; }
     }
 
     private static class DiagramState {
@@ -283,6 +285,11 @@ public class ExerciseEditorDialog extends Dialog {
         DiagramCanvas(Context context) { super(context); setBackgroundColor(Color.rgb(229, 239, 233)); }
         void setState(DiagramState state) { this.state = state; selected = null; tool = null; invalidate(); }
         void deleteSelected() { if (selected == null) return; state.snapshot(); state.items.remove(selected); selected = null; invalidate(); }
+        void rotateSelected() {
+            if (selected == null) { Toast.makeText(getContext(), "Prima seleziona un ostacolo o un altro elemento", Toast.LENGTH_SHORT).show(); return; }
+            if (selected.type.equals("arrow") || selected.type.equals("ball") || selected.type.equals("keeper") || selected.type.equals("cone")) { Toast.makeText(getContext(), "Questo elemento non necessita di rotazione", Toast.LENGTH_SHORT).show(); return; }
+            state.snapshot(); selected.rotation = (selected.rotation + 90) % 360; invalidate();
+        }
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
@@ -298,15 +305,18 @@ public class ExerciseEditorDialog extends Dialog {
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(2)); p.setColor(Color.argb(220, 255, 255, 255));
             float l = fieldLeft, t = fieldTop, r = l + fieldWidth, b = t + fieldHeight;
             c.drawRoundRect(l, t, r, b, dp(12), dp(12), p);
-            c.drawLine(l, t + fieldHeight / 2, r, t + fieldHeight / 2, p);
-            c.drawCircle(l + fieldWidth / 2, t + fieldHeight / 2, fieldWidth * .13f, p);
-            c.drawRect(l + fieldWidth * .27f, t, l + fieldWidth * .73f, t + fieldHeight * .18f, p);
-            c.drawRect(l + fieldWidth * .27f, b - fieldHeight * .18f, l + fieldWidth * .73f, b, p);
+            float centerX = l + fieldWidth / 2;
+            float centerRadius = fieldWidth * .13f;
+            c.drawArc(new RectF(centerX - centerRadius, t - centerRadius, centerX + centerRadius, t + centerRadius), 0, 180, false, p);
+            c.drawRect(l + fieldWidth * .22f, b - fieldHeight * .31f, l + fieldWidth * .78f, b, p);
+            c.drawRect(l + fieldWidth * .37f, b - fieldHeight * .13f, l + fieldWidth * .63f, b, p);
         }
 
         private void drawItem(Canvas c, DiagramItem item) {
             float x = sx(item.x), y = sy(item.y), size = Math.max(dp(10), fieldWidth * .032f);
             if (item.type.equals("arrow")) { drawArrow(c, x, y, sx(item.x2), sy(item.y2)); return; }
+            c.save();
+            c.rotate(item.rotation, x, y);
             p.setStyle(Paint.Style.FILL);
             switch (item.type) {
                 case "keeper":
@@ -325,6 +335,7 @@ public class ExerciseEditorDialog extends Dialog {
                 case "goal":
                     p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(3)); p.setColor(Color.WHITE); c.drawRect(x - size * 2.0f, y - size, x + size * 2.0f, y + size, p); break;
             }
+            c.restore();
             if (item == selected) { p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(2)); p.setColor(Color.rgb(255, 235, 59)); c.drawCircle(x, y, size * 2.1f, p); }
         }
 
