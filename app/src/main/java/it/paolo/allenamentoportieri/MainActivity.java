@@ -70,9 +70,12 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int NAVY = Color.rgb(16, 42, 67);
-    private static final int GREEN = Color.rgb(18, 184, 134);
-    private static final int PAGE = Color.rgb(242, 246, 248);
-    private static final int MUTED = Color.rgb(74, 92, 108);
+    private static final int GREEN = Color.rgb(38, 242, 173);
+    private static final int CYAN = Color.rgb(31, 194, 255);
+    private static final int PAGE = Color.rgb(3, 19, 32);
+    private static final int SURFACE = Color.rgb(8, 40, 58);
+    private static final int TEXT = Color.rgb(238, 250, 255);
+    private static final int MUTED = Color.rgb(167, 195, 210);
     private static final String[] GOALS = {"Reattività", "Uscite alte", "Uno contro uno", "Gioco con i piedi", "Forza e mobilità", "Altro"};
     private static final int PICK_PHOTO = 40;
     private static final int EXPORT_BACKUP = 41;
@@ -104,13 +107,13 @@ public class MainActivity extends Activity {
     private void base(String title, String subtitle) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(PAGE);
+        root.setBackground(techPageBackground());
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(20), dp(18), dp(20), dp(16));
-        head.setBackgroundColor(NAVY);
+        head.setBackground(techGradient(Color.rgb(4, 27, 46), Color.rgb(5, 54, 65), CYAN, 1));
         Button menu = button("☰");
         menu.setTextSize(25);
         menu.setTextColor(Color.WHITE);
@@ -142,8 +145,10 @@ public class MainActivity extends Activity {
     private void showMainMenu() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Allenamento Portieri").setView(panel).setNegativeButton("Chiudi", null).create();
+        panel.setPadding(dp(16), dp(16), dp(16), dp(8));
+        panel.setBackground(techGradient(SURFACE, Color.rgb(4, 27, 43), CYAN, 1));
+        TextView menuTitle = text("ALLENAMENTO PORTIERI", 21, TEXT, true); menuTitle.setPadding(dp(4), dp(3), 0, dp(14)); panel.addView(menuTitle);
+        AlertDialog dialog = new AlertDialog.Builder(this).setView(panel).setNegativeButton("CHIUDI", null).create();
         addMenuItem(panel, "⌂  Home", dialog, this::showHome);
         addMenuItem(panel, "▣  Storico e calendario", dialog, this::showHistory);
         addMenuItem(panel, "＋  Nuovo allenamento", dialog, () -> showEditor(null));
@@ -152,7 +157,7 @@ public class MainActivity extends Activity {
         addMenuItem(panel, "↕  Backup e trasferimento", dialog, this::showBackupPanel);
         addMenuItem(panel, "?  Istruzioni di utilizzo", dialog, this::showInstructions);
         addMenuItem(panel, "ⓘ  Informazioni", dialog, this::showAbout);
-        dialog.setOnShowListener(v -> tint(dialog));
+        dialog.setOnShowListener(v -> { tint(dialog); if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(round(Color.TRANSPARENT, 18, Color.TRANSPARENT, 0)); });
         dialog.show();
     }
 
@@ -224,7 +229,7 @@ public class MainActivity extends Activity {
             LinearLayout line = row();
             TextView title = text(name, 18, NAVY, true);
             line.addView(title, weight());
-            TextView count = pill(trainingCount(name) + " sedute", Color.rgb(225, 233, 238), NAVY);
+            TextView count = pill(trainingCount(name) + " sedute", Color.rgb(10, 58, 75), TEXT);
             line.addView(count);
             item.addView(line);
             LinearLayout actions = row();
@@ -419,9 +424,9 @@ public class MainActivity extends Activity {
         Button toggle = smallButton("VEDI  ▾"); summary.addView(toggle, new LinearLayout.LayoutParams(dp(82), dp(44))); card.addView(summary);
         LinearLayout details = new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setVisibility(View.GONE);
         LinearLayout badgeRow = row();
-        TextView goal = pill(s.goal, GREEN, Color.WHITE);
+        TextView goal = pill(s.goal, GREEN, Color.rgb(2, 35, 35));
         badgeRow.addView(goal);
-        TextView duration = pill(s.minutes + " min", Color.rgb(225, 233, 238), NAVY);
+        TextView duration = pill(s.minutes + " min", Color.rgb(10, 58, 75), TEXT);
         LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-2, -2);
         dp.setMargins(dp(8), 0, 0, 0);
         badgeRow.addView(duration, dp);
@@ -436,7 +441,7 @@ public class MainActivity extends Activity {
             details.addView(people);
         }
         if (!s.work.trim().isEmpty()) {
-            TextView work = text(numberedExercises(s.work), 15, Color.rgb(35, 55, 70), false);
+            TextView work = text(numberedExercises(s.work), 15, TEXT, false);
             work.setPadding(0, dp(11), 0, 0);
             details.addView(work);
             Button diagram = smallButton("VEDI SCHEMA ESERCIZI");
@@ -912,7 +917,7 @@ public class MainActivity extends Activity {
     private List<String> splitPeople(String value) { List<String> result = new ArrayList<>(); if (value == null) return result; for (String raw : value.split("[\\n,;]+")) { String name = raw.trim(); if (!name.isEmpty() && !result.contains(name)) result.add(name); } return result; }
     private String[] people() { List<String> values = new ArrayList<>(); for (Session s : sessions) for (String name : splitPeople(s.participants)) if (!values.contains(name)) values.add(name); Collections.sort(values, String.CASE_INSENSITIVE_ORDER); return values.toArray(new String[0]); }
     private String numberedExercises(String work) { StringBuilder out = new StringBuilder(); int n = 1; for (String raw : work.split("\\n+")) { String line = raw.trim(); if (!line.isEmpty()) { if (out.length() > 0) out.append("\n"); out.append(n++).append(". ").append(line); } } return out.toString(); }
-    private LinearLayout goalkeeperSelector(String selectedNames) { LinearLayout box = card(); List<String> selected = splitPeople(selectedNames); if (goalkeepers.isEmpty()) box.addView(text("Prima aggiungi almeno un portiere alla lista.", 14, MUTED, false)); else for (String name : goalkeepers) { CheckBox check = new CheckBox(this); check.setText(name); check.setTextSize(16); check.setTextColor(NAVY); check.setButtonTintList(ColorStateList.valueOf(GREEN)); check.setPadding(dp(2), dp(5), dp(2), dp(5)); check.setChecked(selected.contains(name)); box.addView(check); } return box; }
+    private LinearLayout goalkeeperSelector(String selectedNames) { LinearLayout box = card(); List<String> selected = splitPeople(selectedNames); if (goalkeepers.isEmpty()) box.addView(text("Prima aggiungi almeno un portiere alla lista.", 14, MUTED, false)); else for (String name : goalkeepers) { CheckBox check = new CheckBox(this); check.setText(name); check.setTextSize(16); check.setTextColor(TEXT); check.setButtonTintList(ColorStateList.valueOf(GREEN)); check.setPadding(dp(2), dp(5), dp(2), dp(5)); check.setChecked(selected.contains(name)); box.addView(check); } return box; }
     private String collectSelectedGoalkeepers(LinearLayout container) { List<String> names = new ArrayList<>(); for (int i = 0; i < container.getChildCount(); i++) if (container.getChildAt(i) instanceof CheckBox) { CheckBox check = (CheckBox) container.getChildAt(i); if (check.isChecked()) names.add(check.getText().toString()); } return joinLines(names); }
     private String joinLines(List<String> names) { StringBuilder out = new StringBuilder(); for (String name : names) { if (out.length() > 0) out.append("\n"); out.append(name); } return out.toString(); }
 
@@ -928,27 +933,27 @@ public class MainActivity extends Activity {
         }).show();
     }
 
-    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(round(Color.WHITE, 14, Color.rgb(222, 230, 235), 1)); v.setElevation(dp(2)); marginBottom(v, 12); return v; }
+    private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); v.setPadding(dp(16), dp(15), dp(16), dp(14)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); v.setElevation(dp(3)); marginBottom(v, 12); return v; }
     private LinearLayout row() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
     private View stat(String title, String value) { LinearLayout v = card(); TextView n = text(value, 27, NAVY, true); TextView l = text(title, 11, MUTED, true); l.setPadding(0, dp(3), 0, 0); v.addView(n); v.addView(l); return v; }
     private TextView section(String s) { TextView v = text(s, 19, NAVY, true); v.setPadding(dp(2), dp(22), 0, dp(11)); return v; }
     private TextView label(String s) { TextView v = text(s, 14, NAVY, true); v.setPadding(dp(2), dp(14), 0, dp(6)); return v; }
-    private TextView empty(String s) { TextView v = text(s, 15, MUTED, false); v.setGravity(Gravity.CENTER); v.setPadding(dp(18), dp(28), dp(18), dp(28)); v.setBackground(round(Color.WHITE, 14, Color.rgb(222, 230, 235), 1)); return v; }
-    private TextView text(String s, int sp, int color, boolean bold) { TextView v = new TextView(this); v.setText(s); v.setTextSize(sp); v.setTextColor(color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
+    private TextView empty(String s) { TextView v = text(s, 15, MUTED, false); v.setGravity(Gravity.CENTER); v.setPadding(dp(18), dp(28), dp(18), dp(28)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
+    private TextView text(String s, int sp, int color, boolean bold) { TextView v = new TextView(this); v.setText(s); v.setTextSize(sp); v.setTextColor(color == NAVY ? TEXT : color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
     private TextView pill(String s, int bg, int fg) { TextView v = text(s, 12, fg, true); v.setPadding(dp(10), dp(5), dp(10), dp(5)); v.setBackground(round(bg, 30, Color.TRANSPARENT, 0)); return v; }
-    private TextView inputDisplay(String s) { TextView v = text(s, 16, Color.rgb(35, 55, 70), false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return v; }
-    private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(Color.rgb(30, 48, 62)); v.setHintTextColor(Color.rgb(135, 149, 159)); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return v; }
-    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(16); t.setTextColor(Color.rgb(35, 55, 70)); t.setPadding(dp(13), dp(13), dp(13), dp(13)); return t; }}; v.setAdapter(adapter); v.setBackground(withCaret(round(Color.WHITE, 10, Color.rgb(201, 213, 221), 1))); v.setPadding(dp(13), dp(13), dp(30), dp(13)); return v; }
-    private Button primary(String s) { Button b = button(s); b.setTextColor(Color.WHITE); b.setBackground(rippleRound(GREEN, 12)); b.setMinHeight(dp(52)); return b; }
-    private Button secondary(String s) { Button b = button(s); b.setTextColor(NAVY); b.setBackground(rippleRound(Color.WHITE, 12, Color.rgb(188, 203, 213), 1)); b.setMinHeight(dp(50)); return b; }
-    private Button smallButton(String s) { Button b = button(s); b.setTextColor(NAVY); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(241, 245, 247), 9, Color.rgb(218, 227, 232), 1)); return b; }
-    private Button link(String s) { Button b = button(s); b.setTextColor(NAVY); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(35, 16, 42, 67)), null, null)); return b; }
-    private Button inputButton(String s) { Button b = button(s); b.setTextColor(Color.rgb(35, 55, 70)); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(rippleRound(Color.WHITE, 10, Color.rgb(201, 213, 221), 1)); return b; }
+    private TextView inputDisplay(String s) { TextView v = text(s, 16, TEXT, false); v.setPadding(dp(13), dp(13), dp(13), dp(13)); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
+    private EditText input(String hint, int type) { EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(TEXT); v.setHintTextColor(MUTED); v.setPadding(dp(13), dp(11), dp(13), dp(11)); v.setInputType(type); v.setBackground(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1)); return v; }
+    private Spinner spinner(String[] values) { Spinner v = new Spinner(this); ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, values) { @Override public View getView(int p, View c, ViewGroup parent) { TextView t = (TextView) super.getView(p, c, parent); t.setTextSize(16); t.setTextColor(TEXT); t.setPadding(dp(13), dp(13), dp(13), dp(13)); return t; }}; v.setAdapter(adapter); v.setBackground(withCaret(techGradient(SURFACE, Color.rgb(5, 31, 47), CYAN, 1))); v.setPadding(dp(13), dp(13), dp(30), dp(13)); return v; }
+    private Button primary(String s) { Button b = button(s); b.setTextColor(Color.rgb(2, 35, 35)); b.setBackground(rippleTech(GREEN, Color.rgb(31, 218, 255))); b.setMinHeight(dp(54)); return b; }
+    private Button secondary(String s) { Button b = button(s); b.setTextColor(TEXT); b.setBackground(rippleRound(SURFACE, 12, CYAN, 1)); b.setMinHeight(dp(50)); return b; }
+    private Button smallButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setTextSize(12); b.setBackground(rippleRound(Color.rgb(9, 49, 67), 9, Color.rgb(31, 143, 177), 1)); return b; }
+    private Button link(String s) { Button b = button(s); b.setTextColor(GREEN); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(0, 0, 0, 0); b.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(55, 38, 242, 173)), null, null)); return b; }
+    private Button inputButton(String s) { Button b = button(s); b.setTextColor(TEXT); b.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL); b.setPadding(dp(13), 0, dp(13), 0); b.setBackground(rippleRound(SURFACE, 10, CYAN, 1)); return b; }
     private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(14); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setAllCaps(false); return b; }
     private ImageView trainingPhoto(String uri, int height) {
         ImageView v = new ImageView(this);
         v.setLayoutParams(new LinearLayout.LayoutParams(dp(180), dp(height)));
-        v.setBackground(round(Color.rgb(225, 233, 238), 12, Color.TRANSPARENT, 0));
+        v.setBackground(round(SURFACE, 12, CYAN, 1));
         boolean loaded = false;
         if (uri != null && !uri.isEmpty()) {
             try (InputStream test = getContentResolver().openInputStream(Uri.parse(uri))) {
@@ -969,6 +974,9 @@ public class MainActivity extends Activity {
     private View photoGallery(List<String> uris, int height) { HorizontalScrollView scroll = new HorizontalScrollView(this); LinearLayout strip = new LinearLayout(this); strip.setOrientation(LinearLayout.HORIZONTAL); strip.setPadding(0, dp(11), 0, 0); for (String uri : uris) { ImageView photo = trainingPhoto(uri, height); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(180), dp(height)); p.setMargins(0, 0, dp(8), 0); strip.addView(photo, p); } scroll.addView(strip); return scroll; }
     private void renderEditorPhotos() { if (editorPhotoStrip == null) return; editorPhotoStrip.removeAllViews(); if (editorPhotoUris.isEmpty()) { TextView hint = text("Nessuna foto selezionata", 14, MUTED, false); hint.setGravity(Gravity.CENTER_VERTICAL); editorPhotoStrip.addView(hint, new LinearLayout.LayoutParams(dp(240), dp(120))); return; } for (String uri : editorPhotoUris) { ImageView photo = trainingPhoto(uri, 120); LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(160), dp(120)); p.setMargins(0, 0, dp(8), 0); editorPhotoStrip.addView(photo, p); } }
     private GradientDrawable round(int fill, int radius, int stroke, int width) { GradientDrawable g = new GradientDrawable(); g.setColor(fill); g.setCornerRadius(dp(radius)); if (width > 0) g.setStroke(dp(width), stroke); return g; }
+    private GradientDrawable techGradient(int start, int end, int stroke, int width) { GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{start, end}); g.setCornerRadius(dp(14)); if (width > 0) g.setStroke(dp(width), stroke); return g; }
+    private Drawable techPageBackground() { return new LayerDrawable(new Drawable[]{techGradient(PAGE, Color.rgb(4, 32, 45), 0, 0), new TechLinesDrawable(CYAN)}); }
+    private Drawable rippleTech(int start, int end) { GradientDrawable base = techGradient(start, end, Color.rgb(92, 255, 214), 1); GradientDrawable mask = round(Color.WHITE, 14, Color.TRANSPARENT, 0); return new RippleDrawable(ColorStateList.valueOf(Color.argb(65, 255, 255, 255)), base, mask); }
     private Drawable rippleRound(int fill, int radius) { return rippleRound(fill, radius, Color.TRANSPARENT, 0); }
     private Drawable rippleRound(int fill, int radius, int stroke, int strokeWidth) {
         GradientDrawable base = round(fill, radius, stroke, strokeWidth);
@@ -995,6 +1003,14 @@ public class MainActivity extends Activity {
             p.close();
             c.drawPath(p, paint);
         }
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { paint.setColorFilter(cf); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
+    static class TechLinesDrawable extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        TechLinesDrawable(int color) { paint.setColor(color); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2); paint.setAlpha(22); }
+        @Override public void draw(Canvas c) { Rect b = getBounds(); float step = Math.max(70, b.width() / 5f); for (float x = -b.height(); x < b.width(); x += step) c.drawLine(x, b.top, x + b.height(), b.bottom, paint); float y = b.bottom - b.height() * .18f; c.drawLine(b.left, y, b.right, y, paint); c.drawRect(b.width() * .23f, y, b.width() * .77f, b.bottom, paint); }
         @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
         @Override public void setColorFilter(ColorFilter cf) { paint.setColorFilter(cf); }
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }

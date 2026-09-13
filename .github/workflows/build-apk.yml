@@ -38,6 +38,6 @@ jobs:
           ./gradlew assembleRelease
       - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v2.4-release-firmato
+          name: Allenamento-Portieri-v2.5-sport-tech-firmato
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

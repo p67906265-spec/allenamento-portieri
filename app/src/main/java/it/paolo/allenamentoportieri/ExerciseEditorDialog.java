@@ -37,8 +37,11 @@ import java.util.Locale;
 /** Editor tattico locale: uno schema indipendente e salvabile per ogni esercizio. */
 public class ExerciseEditorDialog extends Dialog {
     private static final int NAVY = Color.rgb(16, 42, 67);
-    private static final int GREEN = Color.rgb(18, 184, 134);
-    private static final int PAGE = Color.rgb(242, 246, 248);
+    private static final int GREEN = Color.rgb(38, 242, 173);
+    private static final int CYAN = Color.rgb(31, 194, 255);
+    private static final int PAGE = Color.rgb(3, 19, 32);
+    private static final int SURFACE = Color.rgb(8, 40, 58);
+    private static final int TEXT = Color.rgb(238, 250, 255);
 
     public interface OnSaveListener { void onSave(List<String> diagrams); }
 
@@ -66,11 +69,11 @@ public class ExerciseEditorDialog extends Dialog {
         super.onCreate(state);
         LinearLayout root = new LinearLayout(getContext());
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(PAGE);
+        root.setBackground(techGradient(PAGE, Color.rgb(4, 32, 45), 0, 0));
 
         LinearLayout header = row();
         header.setPadding(dp(10), dp(8), dp(10), dp(8));
-        header.setBackgroundColor(NAVY);
+        header.setBackground(techGradient(Color.rgb(4, 27, 46), Color.rgb(5, 54, 65), CYAN, 1));
         Button close = button("‹  Chiudi");
         close.setTextColor(Color.WHITE);
         close.setOnClickListener(v -> dismiss());
@@ -97,12 +100,12 @@ public class ExerciseEditorDialog extends Dialog {
         pager.addView(next, new LinearLayout.LayoutParams(dp(52), dp(44)));
         root.addView(pager);
 
-        description = text("", 14, Color.rgb(55, 72, 86), false);
+        description = text("", 14, TEXT, false);
         description.setMaxLines(6);
         description.setPadding(dp(16), dp(3), dp(16), dp(8));
         root.addView(description);
 
-        TextView hint = text("Apri una categoria, scegli lo strumento e poi tocca il campo.", 12, Color.rgb(80, 96, 108), false);
+        TextView hint = text("Apri una categoria, scegli lo strumento e poi tocca il campo.", 12, Color.rgb(167, 195, 210), false);
         hint.setPadding(dp(16), 0, dp(16), dp(7));
         root.addView(hint);
 
@@ -242,12 +245,13 @@ public class ExerciseEditorDialog extends Dialog {
     }
 
     private LinearLayout row() { LinearLayout v = new LinearLayout(getContext()); v.setOrientation(LinearLayout.HORIZONTAL); v.setGravity(Gravity.CENTER_VERTICAL); return v; }
-    private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(getContext()); v.setText(value); v.setTextSize(size); v.setTextColor(color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
+    private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(getContext()); v.setText(value); v.setTextSize(size); v.setTextColor(color == NAVY ? TEXT : color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
     private Button button(String value) { Button b = new Button(getContext()); b.setText(value); b.setTextSize(14); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT, Typeface.BOLD); b.setBackgroundColor(Color.TRANSPARENT); return b; }
-    private Button compact(String value) { Button b = button(value); b.setTextColor(NAVY); b.setPadding(dp(14), 0, dp(14), 0); b.setBackground(rounded(Color.WHITE, Color.rgb(195, 208, 216))); return b; }
+    private Button compact(String value) { Button b = button(value); b.setTextColor(TEXT); b.setPadding(dp(14), 0, dp(14), 0); b.setBackground(rounded(SURFACE, CYAN)); return b; }
     private Button categoryButton(String value, int color) { Button b = compactColor(value, color); b.setTextSize(10); b.setPadding(dp(4), 0, dp(4), 0); return b; }
     private Button compactColor(String value, int color) { Button b = button(value); b.setTextColor(Color.WHITE); b.setPadding(dp(12), 0, dp(12), 0); b.setBackground(rounded(color, color)); return b; }
     private GradientDrawable rounded(int fill, int stroke) { GradientDrawable d = new GradientDrawable(); d.setColor(fill); d.setCornerRadius(dp(10)); d.setStroke(dp(1), stroke); return d; }
+    private GradientDrawable techGradient(int start, int end, int stroke, int width) { GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{start, end}); d.setCornerRadius(dp(12)); if (width > 0) d.setStroke(dp(width), stroke); return d; }
     private int dp(int value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
 
     private static class DiagramItem {
