@@ -21,6 +21,6 @@ jobs:
           ./gradlew assembleDebug
       - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v2.0-sequenza-testuale
+          name: Allenamento-Portieri-v2.1-maniglie-frecce
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

@@ -361,6 +361,8 @@ public class ExerciseEditorDialog extends Dialog {
         private DiagramItem selected;
         private float fieldLeft, fieldTop, fieldWidth, fieldHeight;
         private float downX, downY;
+        private float lastTouchX, lastTouchY;
+        private int selectedHandle;
         private AnimatorSet movementAnimator;
         private boolean showingMovement;
         private float animatedKeeperX, animatedKeeperY;
@@ -452,6 +454,7 @@ public class ExerciseEditorDialog extends Dialog {
                 float x2 = sx(item.x2), y2 = sy(item.y2);
                 drawArrow(c, x, y, x2, y2, item.type.equals("move") ? Color.rgb(117, 245, 224) : Color.WHITE);
                 if (item.type.equals("move")) drawOrder(c, (x + x2) / 2f, (y + y2) / 2f, item.order);
+                if (item == selected) drawArrowHandles(c, x, y, x2, y2);
                 return;
             }
             if (item.type.equals("ball") && showingMovement && item.order > 0 && item.order != activeMovementOrder) return;
@@ -506,7 +509,13 @@ public class ExerciseEditorDialog extends Dialog {
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dp(3)); p.setColor(color); c.drawLine(x1, y1, x2, y2, p);
             double angle = Math.atan2(y2 - y1, x2 - x1); float head = dp(13);
             Path path = new Path(); path.moveTo(x2, y2); path.lineTo((float)(x2 - head * Math.cos(angle - .55)), (float)(y2 - head * Math.sin(angle - .55))); path.moveTo(x2, y2); path.lineTo((float)(x2 - head * Math.cos(angle + .55)), (float)(y2 - head * Math.sin(angle + .55))); c.drawPath(path, p);
-            if (selected != null && selected.type.equals("arrow") && selected.x == nx(x1) && selected.y == ny(y1)) { p.setColor(Color.YELLOW); c.drawCircle(x1, y1, dp(6), p); c.drawCircle(x2, y2, dp(6), p); }
+        }
+
+        private void drawArrowHandles(Canvas c, float x1, float y1, float x2, float y2) {
+            p.setStyle(Paint.Style.FILL); p.setColor(Color.rgb(255, 235, 59));
+            c.drawCircle(x1, y1, dp(8), p); c.drawCircle(x2, y2, dp(8), p);
+            p.setColor(Color.rgb(48, 145, 80));
+            c.drawCircle(x1, y1, dp(4), p); c.drawCircle(x2, y2, dp(4), p);
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
@@ -515,20 +524,39 @@ public class ExerciseEditorDialog extends Dialog {
             if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return true;
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 downX = nx; downY = ny;
+                lastTouchX = nx; lastTouchY = ny;
                 if (isDrawingTool(tool)) return true;
                 if (tool != null) { state.snapshot(); DiagramItem item = new DiagramItem(tool, nx, ny); state.items.add(item); selected = item; tool = null; invalidate(); return true; }
                 selected = hit(nx, ny);
-                if (selected != null) state.snapshot();
+                selectedHandle = 0;
+                if (selected != null) {
+                    state.snapshot();
+                    if (isArrow(selected)) {
+                        if (distance(nx, ny, selected.x, selected.y) < .055f) selectedHandle = 1;
+                        else if (distance(nx, ny, selected.x2, selected.y2) < .055f) selectedHandle = 2;
+                    }
+                }
                 invalidate(); return true;
             }
             if (e.getAction() == MotionEvent.ACTION_MOVE && selected != null && tool == null) {
-                if (selected.type.equals("arrow")) { float dx = nx - selected.x, dy = ny - selected.y; selected.x = nx; selected.y = ny; selected.x2 += dx; selected.y2 += dy; }
+                if (isArrow(selected)) {
+                    if (selectedHandle == 1) { selected.x = clamp(nx); selected.y = clamp(ny); }
+                    else if (selectedHandle == 2) { selected.x2 = clamp(nx); selected.y2 = clamp(ny); }
+                    else {
+                        float dx = nx - lastTouchX, dy = ny - lastTouchY;
+                        dx = Math.max(-Math.min(selected.x, selected.x2), Math.min(dx, 1f - Math.max(selected.x, selected.x2)));
+                        dy = Math.max(-Math.min(selected.y, selected.y2), Math.min(dy, 1f - Math.max(selected.y, selected.y2)));
+                        selected.x += dx; selected.y += dy; selected.x2 += dx; selected.y2 += dy;
+                    }
+                    lastTouchX = nx; lastTouchY = ny;
+                }
                 else { selected.x = nx; selected.y = ny; }
                 invalidate(); return true;
             }
             if (e.getAction() == MotionEvent.ACTION_UP && isDrawingTool(tool)) {
                 state.snapshot(); DiagramItem arrow = new DiagramItem(tool, downX, downY, nx, ny); if (tool.equals("move")) arrow.order = movementCount() + 1; state.items.add(arrow); selected = arrow; tool = null; invalidate(); return true;
             }
+            if (e.getAction() == MotionEvent.ACTION_UP) selectedHandle = 0;
             return true;
         }
 
@@ -547,6 +575,8 @@ public class ExerciseEditorDialog extends Dialog {
             t = Math.max(0, Math.min(1, t));
             return (float)Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
         }
+        private float distance(float x1, float y1, float x2, float y2) { return (float)Math.hypot(x1 - x2, y1 - y2); }
+        private float clamp(float value) { return Math.max(0f, Math.min(1f, value)); }
         private boolean isDrawingTool(String value) { return "arrow".equals(value) || "move".equals(value) || "shot".equals(value); }
         private float sx(float x) { return fieldLeft + x * fieldWidth; }
         private float sy(float y) { return fieldTop + y * fieldHeight; }
