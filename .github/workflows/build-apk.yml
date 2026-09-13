@@ -38,6 +38,6 @@ jobs:
           ./gradlew assembleRelease
       - uses: actions/upload-artifact@v5
         with:
-          name: Allenamento-Portieri-v3.0-segnalazioni-dirette-firmato
+          name: Allenamento-Portieri-v3.2-zoom-libreria-esercizi-firmato
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

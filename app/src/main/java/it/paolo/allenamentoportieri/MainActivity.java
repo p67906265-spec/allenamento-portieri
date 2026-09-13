@@ -683,6 +683,21 @@ public class MainActivity extends Activity {
         });
         content.addView(use);
 
+        content.addView(section("Libreria esercizi"));
+        String[][] library = exerciseLibrary();
+        String[] exerciseNames = new String[library.length];
+        for (int i = 0; i < library.length; i++) exerciseNames[i] = library[i][0];
+        Spinner exerciseChoice = spinner(exerciseNames);
+        content.addView(exerciseChoice);
+        LinearLayout exercisePreview = card(); marginTop(exercisePreview, 10); content.addView(exercisePreview);
+        Button useExercise = secondary("USA QUESTO ESERCIZIO"); content.addView(useExercise);
+        Runnable showExercise = () -> renderLibraryExercise(exercisePreview, library[exerciseChoice.getSelectedItemPosition()]);
+        exerciseChoice.setOnItemSelectedListener(listener(showExercise)); showExercise.run();
+        useExercise.setOnClickListener(v -> {
+            String[] exercise = library[exerciseChoice.getSelectedItemPosition()];
+            showEditorWithPlan(exercise[1], 45, exercise[0] + "\n\nObiettivo: " + exercise[2] + "\n\n" + exercise[3]);
+        });
+
         TextView warning = text("Suggerimento generale: adatta sempre intensità, distanze e numero di ripetizioni a età, livello, condizioni fisiche e spazio disponibile. Interrompi in caso di dolore.", 13, MUTED, false);
         warning.setPadding(dp(4), dp(16), dp(4), 0);
         content.addView(warning);
@@ -767,6 +782,28 @@ public class MainActivity extends Activity {
             p.setPadding(0, dp(13), 0, 0);
             target.addView(p);
         }
+    }
+
+    private void renderLibraryExercise(LinearLayout target, String[] exercise) {
+        target.removeAllViews();
+        target.addView(text(exercise[0], 18, TEXT, true));
+        TextView objective = text("OBIETTIVO\n" + exercise[2], 14, MUTED, false); objective.setPadding(0, dp(12), 0, dp(10)); target.addView(objective);
+        TextView instructions = text(exercise[3], 15, TEXT, false); instructions.setLineSpacing(dp(2), 1.12f); target.addView(instructions);
+    }
+
+    private String[][] exerciseLibrary() {
+        return new String[][]{
+                {"01 · Tre coni", "Reattività", "Pensiero e movimenti veloci per raggiungere la zona da dove arriva il pallone.",
+                        "1. Posiziona tre coni davanti alla porta, mezzo metro all’interno dell’area piccola.\n2. Il portiere parte al centro della porta; un compagno, sul dischetto del rigore, dispone dei palloni.\n3. Il compagno indica un cono a voce alta. Il portiere corre verso quel cono, torna al centro e si prepara a prendere il pallone."},
+                {"02 · Un cono", "Reattività", "Cambiare rapidamente posizione e reagire a un tiro proveniente da un’angolazione differente.",
+                        "1. Posiziona un cono al centro dell’area piccola.\n2. Il portiere parte al centro della porta; un compagno si trova sull’angolo dell’area di rigore.\n3. Il portiere corre verso il cono, lo aggira e fronteggia l’angolo.\n4. Il compagno calcia e il portiere blocca il pallone."},
+                {"03 · Reazione al rimbalzo", "Reattività", "Reagire al rimbalzo imprevedibile di un pallone basso o alto.",
+                        "1. Posiziona due coni come riferimento per la zona del rimbalzo.\n2. Un compagno si colloca a un metro dall’area piccola; il portiere parte di lato rispetto alla porta.\n3. Al «via» il portiere corre verso i coni e il compagno lancia il pallone a terra tra i coni, oppure in aria per variare.\n4. Il portiere legge il movimento del pallone e lo afferra."},
+                {"04 · Presa bassa in tuffo", "Reattività", "Allenare la presa bassa in tuffo sui due lati.",
+                        "1. Il compagno si posiziona sul dischetto del rigore.\n2. Calcia la palla bassa verso un lato della porta.\n3. Il portiere si tuffa nella direzione del pallone e lo blocca.\n4. Alterna regolarmente il lato destro e quello sinistro."},
+                {"05 · Torsione di 180°", "Reattività", "Allenare riflessi e reazione a un pallone che arriva all’improvviso.",
+                        "1. Il portiere si posiziona di lato rispetto alla porta.\n2. Il compagno si colloca vicino al dischetto del rigore.\n3. Il compagno calcia verso l’angolo destro o sinistro e grida «via».\n4. Il portiere si gira rapidamente, legge la traiettoria e afferra il pallone."}
+        };
     }
 
     private String[] exercises(String goal) {

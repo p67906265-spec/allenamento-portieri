@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -142,7 +143,8 @@ public class ExerciseEditorDialog extends Dialog {
         HorizontalScrollView extraScroll = new HorizontalScrollView(getContext()); extraScroll.setHorizontalScrollBarEnabled(false); extraScroll.setVisibility(View.GONE);
         LinearLayout extra = row(); extra.setPadding(dp(10), 0, dp(10), dp(8));
         addCommand(extra, "Ruota 90°", v -> board.rotateSelected()); addCommand(extra, "Ordine −", v -> board.changeSelectedOrder(-1));
-        addCommand(extra, "Ordine +", v -> board.changeSelectedOrder(1)); addCommand(extra, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
+        addCommand(extra, "Ordine +", v -> board.changeSelectedOrder(1)); addCommand(extra, "Zoom 100%", v -> board.resetZoom());
+        addCommand(extra, "Pulisci", v -> { board.state.snapshot(); board.state.items.clear(); board.invalidate(); });
         addCommand(extra, "Ricrea automazione", v -> { states.set(current, DiagramState.automatic(descriptions.get(current))); showCurrent(); });
         extraScroll.addView(extra); root.addView(extraScroll, new LinearLayout.LayoutParams(-1, dp(56)));
         more.setOnClickListener(v -> { boolean open = extraScroll.getVisibility() == View.VISIBLE; extraScroll.setVisibility(open ? View.GONE : View.VISIBLE); more.setText(tr(open ? "ALTRE AZIONI  ▾" : "ALTRE AZIONI  ▴")); });
@@ -290,6 +292,7 @@ public class ExerciseEditorDialog extends Dialog {
             case "Ordine −": v=a("Order −","Orden −","Ordre −","Reihenfolge −"); break;
             case "Ordine +": v=a("Order +","Orden +","Ordre +","Reihenfolge +"); break;
             case "Pulisci": v=a("Clear","Limpiar","Effacer","Leeren"); break;
+            case "Zoom 100%": v=a("Zoom 100%","Zoom 100%","Zoom 100 %","Zoom 100 %"); break;
             case "Ricrea automazione": v=a("Recreate automation","Recrear automatización","Recréer l’automatisation","Automatik neu erstellen"); break;
             default: return it;
         }
@@ -417,9 +420,36 @@ public class ExerciseEditorDialog extends Dialog {
         private boolean showingMovement;
         private float animatedKeeperX, animatedKeeperY;
         private int activeMovementOrder;
+        private final ScaleGestureDetector scaleDetector;
+        private float zoom = 1f;
+        private float zoomOffsetX;
+        private float zoomOffsetY;
+        private float lastZoomFocusX;
+        private float lastZoomFocusY;
+        private boolean zoomGesture;
 
-        DiagramCanvas(Context context) { super(context); setBackgroundColor(Color.rgb(229, 239, 233)); }
-        void setState(DiagramState state) { stopMovement(); this.state = state; normalizeMovementOrders(); selected = null; tool = null; invalidate(); }
+        DiagramCanvas(Context context) {
+            super(context);
+            setBackgroundColor(Color.rgb(229, 239, 233));
+            scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                @Override public boolean onScaleBegin(ScaleGestureDetector detector) { zoomGesture = true; selected = null; selectedHandle = 0; lastZoomFocusX = detector.getFocusX(); lastZoomFocusY = detector.getFocusY(); return true; }
+                @Override public boolean onScale(ScaleGestureDetector detector) {
+                    zoomOffsetX += detector.getFocusX() - lastZoomFocusX;
+                    zoomOffsetY += detector.getFocusY() - lastZoomFocusY;
+                    float oldZoom = zoom;
+                    float newZoom = Math.max(1f, Math.min(4f, oldZoom * detector.getScaleFactor()));
+                    float ratio = newZoom / oldZoom;
+                    float cx = getWidth() / 2f, cy = getHeight() / 2f;
+                    zoomOffsetX = detector.getFocusX() - cx - ratio * (detector.getFocusX() - cx - zoomOffsetX);
+                    zoomOffsetY = detector.getFocusY() - cy - ratio * (detector.getFocusY() - cy - zoomOffsetY);
+                    zoom = newZoom;
+                    lastZoomFocusX = detector.getFocusX(); lastZoomFocusY = detector.getFocusY();
+                    clampZoomOffsets(); invalidate(); return true;
+                }
+            });
+        }
+        void setState(DiagramState state) { stopMovement(); this.state = state; normalizeMovementOrders(); selected = null; tool = null; resetZoom(); }
+        void resetZoom() { zoom = 1f; zoomOffsetX = 0f; zoomOffsetY = 0f; invalidate(); }
         void deleteSelected() { if (selected == null) return; state.snapshot(); state.items.remove(selected); selected = null; invalidate(); }
         void rotateSelected() {
             if (selected == null) { Toast.makeText(getContext(), "Prima seleziona un ostacolo o un altro elemento", Toast.LENGTH_SHORT).show(); return; }
@@ -478,11 +508,16 @@ public class ExerciseEditorDialog extends Dialog {
             super.onDraw(c);
             float margin = getWidth() * .055f;
             fieldLeft = margin; fieldTop = dp(5); fieldWidth = getWidth() - margin * 2; fieldHeight = getHeight() - dp(10);
+            c.save();
+            c.clipRect(0, 0, getWidth(), getHeight());
+            c.translate(zoomOffsetX, zoomOffsetY);
+            c.scale(zoom, zoom, getWidth() / 2f, getHeight() / 2f);
             p.setStyle(Paint.Style.FILL); p.setColor(Color.rgb(48, 145, 80));
             c.drawRoundRect(fieldLeft, fieldTop, fieldLeft + fieldWidth, fieldTop + fieldHeight, dp(12), dp(12), p);
             drawField(c);
             for (DiagramItem item : state.items) if (isArrow(item)) drawItem(c, item);
             for (DiagramItem item : state.items) if (!isArrow(item)) drawItem(c, item);
+            c.restore();
         }
 
         private boolean isArrow(DiagramItem item) { return item.type.equals("arrow") || item.type.equals("move") || item.type.equals("shot"); }
@@ -569,8 +604,13 @@ public class ExerciseEditorDialog extends Dialog {
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
+            scaleDetector.onTouchEvent(e);
+            if (e.getPointerCount() > 1 || zoomGesture) {
+                if (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL) zoomGesture = false;
+                return true;
+            }
             if (e.getAction() == MotionEvent.ACTION_DOWN) stopMovement();
-            float nx = nx(e.getX()), ny = ny(e.getY());
+            float nx = nx(unzoomX(e.getX())), ny = ny(unzoomY(e.getY()));
             if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return true;
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 downX = nx; downY = ny;
@@ -632,6 +672,15 @@ public class ExerciseEditorDialog extends Dialog {
         private float sy(float y) { return fieldTop + y * fieldHeight; }
         private float nx(float x) { return fieldWidth == 0 ? 0 : (x - fieldLeft) / fieldWidth; }
         private float ny(float y) { return fieldHeight == 0 ? 0 : (y - fieldTop) / fieldHeight; }
+        private float unzoomX(float screenX) { float center = getWidth() / 2f; return center + (screenX - center - zoomOffsetX) / zoom; }
+        private float unzoomY(float screenY) { float center = getHeight() / 2f; return center + (screenY - center - zoomOffsetY) / zoom; }
+        private void clampZoomOffsets() {
+            if (zoom <= 1f) { zoomOffsetX = 0f; zoomOffsetY = 0f; return; }
+            float maxX = getWidth() * (zoom - 1f) / 2f;
+            float maxY = getHeight() * (zoom - 1f) / 2f;
+            zoomOffsetX = Math.max(-maxX, Math.min(maxX, zoomOffsetX));
+            zoomOffsetY = Math.max(-maxY, Math.min(maxY, zoomOffsetY));
+        }
         private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     }
 }
